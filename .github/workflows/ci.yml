@@ -20,25 +20,18 @@ permissions:
   contents: read
 
 jobs:
-  # ---- US3: code-quality gate (formatting + lint, core and frontend) --------
+  # ---- US3: code-quality gate ----------------------------------------------
+  # Runs on cheap Linux. PinShot targets only macOS + Windows, and the shell
+  # (xcap/arboard/Tauri) needs platform libraries Linux lacks, so here we lint
+  # the platform-independent core crate and the frontend; the shell is linted
+  # on its real platforms in build-test. Workspace `cargo fmt` is safe on Linux
+  # because it does not compile.
   quality:
     name: Quality (fmt, clippy, lint)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
-
-      # Tauri's Linux build needs these system libraries for clippy to compile
-      # the shell crate. (Linux is a CI-only build host here, not a target.)
-      - name: Install Tauri system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            libxdo-dev
 
       - name: Install pinned Rust toolchain
         run: rustup show # installs channel + components from rust-toolchain.toml
@@ -51,29 +44,20 @@ jobs:
           cache: npm
           cache-dependency-path: ui/package-lock.json
 
-      # The frontend must be built before any cargo compile of the Tauri crate:
-      # `tauri::generate_context!` embeds `ui/dist` at compile time.
-      - name: Install & build frontend
+      - name: Rust formatting (whole workspace)
+        run: cargo fmt --all -- --check
+
+      - name: Rust clippy (core crate)
+        run: cargo clippy -p pinshot-core --all-targets -- -D warnings
+
+      - name: Frontend lint & format
         working-directory: ui
         run: |
           npm ci
-          npm run build
+          npm run lint
+          npm run format:check
 
-      - name: Rust formatting
-        run: cargo fmt --all -- --check
-
-      - name: Rust clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-      - name: Frontend lint
-        working-directory: ui
-        run: npm run lint
-
-      - name: Frontend format check
-        working-directory: ui
-        run: npm run format:check
-
-  # ---- US1: build & test on both platforms ---------------------------------
+  # ---- US1: build, lint & test the whole app on both platforms -------------
   build-test:
     name: Build & test (${{ matrix.os }})
     strategy:
@@ -96,14 +80,16 @@ jobs:
           cache: npm
           cache-dependency-path: ui/package-lock.json
 
+      # The frontend must be built before any cargo compile of the Tauri crate:
+      # `tauri::generate_context!` embeds `ui/dist` at compile time.
       - name: Install & build frontend
         working-directory: ui
         run: |
           npm ci
           npm run build
 
-      - name: Build workspace
-        run: cargo build --workspace
+      - name: Clippy (whole workspace)
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Test workspace
         run: cargo test --workspace
