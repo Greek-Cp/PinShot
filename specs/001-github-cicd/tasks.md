@@ -67,7 +67,7 @@ bundles — laid out per Constitution Principle IV (core as a library).
 - [x] T014 [US2] Create `.github/workflows/release.yml` triggered on `v*` tag push: `build-release` matrix job (macOS, Windows) using `tauri-apps/tauri-action` with `releaseDraft: true`, uploading installers to a draft release; `timeout-minutes: 45`; `permissions: contents: write`; built-in `GITHUB_TOKEN` only
 - [x] T015 [US2] Add `publish-release` job (`needs: build-release`) that publishes the draft only when both platforms succeeded (FR-010); draft re-use keeps re-pushed tags deterministic
 - [x] T016 [US2] Add the `# SIGNING EXTENSION POINT` comment block documenting where signing env vars would go **without implementing any signing step** (FR-015 — no certificates exist)
-- [ ] T017 [US2] Validate per quickstart.md: tag → published release with both installers; broken-platform tag → draft only, failure visible in Actions
+- [x] T017 [US2] Validate per quickstart.md: tag → published release with both installers; broken-platform tag → draft only, failure visible in Actions
 
 **Checkpoint**: Alpha distribution path live (roadmap v0.1 "Rilis alpha").
 
@@ -91,7 +91,7 @@ bundles — laid out per Constitution Principle IV (core as a library).
 
 - [x] T021 [P] Add CI status badge to `README.md`; document branch-protection setup (require `ci-ok`) per quickstart.md
 - [x] T022 [P] Review both workflow files against FR-012/SC-006: every step's destination is GitHub-only; third-party actions pinned to a major version or SHA; note the audit result in PR description
-- [ ] T023 Run the full quickstart.md validation end-to-end and tick off the spec's Success Criteria SC-001…SC-008
+- [x] T023 Run the full quickstart.md validation end-to-end and tick off the spec's Success Criteria SC-001…SC-008
 
 ---
 
