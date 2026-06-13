@@ -26,8 +26,9 @@ cd ui && npm ci && npm run lint && npm run format:check && npm run build
 
 ## Spec-driven workflow
 
-Active feature: `specs/001-github-cicd/` (spec ✅, plan ✅, tasks ✅ — ready for
-`/speckit.implement`). New features: `/speckit.specify` → `/speckit.plan` →
+Active feature: `specs/002-capture-to-output/` (spec ✅, checklist ✅ — ready for
+`/speckit.plan`). Done: `specs/001-github-cicd/` (CI/CD pipeline, shipped;
+v0.0.1-alpha.1 released). New features: `/speckit.specify` → `/speckit.plan` →
 `/speckit.tasks` → `/speckit.implement`; every plan must pass the Constitution
-Check gate.
+Check gate. `main` is branch-protected — all work lands via PR.
 <!-- SPECKIT END -->
