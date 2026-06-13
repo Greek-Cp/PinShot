@@ -1,0 +1,15 @@
+{
+  "version": "0.10.2",
+  "integration_state_schema": 1,
+  "installed_integrations": [
+    "kiro-cli"
+  ],
+  "integration_settings": {
+    "kiro-cli": {
+      "script": "sh",
+      "invoke_separator": "."
+    }
+  },
+  "integration": "kiro-cli",
+  "default_integration": "kiro-cli"
+}

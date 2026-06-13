@@ -1,0 +1,5 @@
+# Pin the toolchain so CI and contributors build with the exact same Rust
+# (Constitution VI: reproducible contributor experience).
+[toolchain]
+channel = "1.96.0"
+components = ["rustfmt", "clippy"]

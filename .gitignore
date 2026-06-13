@@ -1,0 +1,22 @@
+# Rust / Cargo
+target/
+
+# Node / frontend
+node_modules/
+dist/
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+*.swp
+
+# Env / local
+.env
+.env.*

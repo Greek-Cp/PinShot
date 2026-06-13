@@ -1,0 +1,8 @@
+{
+  "ai": "kiro-cli",
+  "feature_numbering": "sequential",
+  "here": true,
+  "integration": "kiro-cli",
+  "script": "sh",
+  "speckit_version": "0.10.2"
+}

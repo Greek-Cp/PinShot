@@ -1,0 +1,127 @@
+name: CI
+
+# Verify every change on both platforms before it reaches `main`.
+# Plain `pull_request` (never pull_request_target) so fork PRs run without
+# any access to secrets — none of these jobs need secrets.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {} # manual re-run of a commit without a code change
+
+# Newer pushes to the same ref supersede stale in-progress runs.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Read-only token; CI publishes nothing.
+permissions:
+  contents: read
+
+jobs:
+  # ---- US3: code-quality gate (formatting + lint, core and frontend) --------
+  quality:
+    name: Quality (fmt, clippy, lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # Tauri's Linux build needs these system libraries for clippy to compile
+      # the shell crate. (Linux is a CI-only build host here, not a target.)
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libxdo-dev
+
+      - name: Install pinned Rust toolchain
+        run: rustup show # installs channel + components from rust-toolchain.toml
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      # The frontend must be built before any cargo compile of the Tauri crate:
+      # `tauri::generate_context!` embeds `ui/dist` at compile time.
+      - name: Install & build frontend
+        working-directory: ui
+        run: |
+          npm ci
+          npm run build
+
+      - name: Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Rust clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Frontend lint
+        working-directory: ui
+        run: npm run lint
+
+      - name: Frontend format check
+        working-directory: ui
+        run: npm run format:check
+
+  # ---- US1: build & test on both platforms ---------------------------------
+  build-test:
+    name: Build & test (${{ matrix.os }})
+    strategy:
+      fail-fast: false # report both platforms even if one fails
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pinned Rust toolchain
+        run: rustup show
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install & build frontend
+        working-directory: ui
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build workspace
+        run: cargo build --workspace
+
+      - name: Test workspace
+        run: cargo test --workspace
+
+  # ---- Single required status: passes only if every job above passed -------
+  ci-ok:
+    name: CI OK
+    if: ${{ always() }}
+    needs: [quality, build-test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require all checks to have succeeded
+        run: |
+          echo "quality:    ${{ needs.quality.result }}"
+          echo "build-test: ${{ needs.build-test.result }}"
+          if [ "${{ needs.quality.result }}" != "success" ] || [ "${{ needs.build-test.result }}" != "success" ]; then
+            echo "::error::One or more required jobs did not succeed."
+            exit 1
+          fi
+          echo "All required jobs passed."

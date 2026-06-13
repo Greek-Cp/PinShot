@@ -1,0 +1,16 @@
+{
+  "integration": "kiro-cli",
+  "version": "0.10.2",
+  "installed_at": "2026-06-12T18:11:19.623576+00:00",
+  "files": {
+    ".kiro/prompts/speckit.analyze.md": "27f299454f295f8b51cdb140624faef1ea7cbe716ee302a2c648729deb381525",
+    ".kiro/prompts/speckit.clarify.md": "25bcc1e1c479c000e8ca3c40306a346509b3c6dc4ec0a0f7595ef8a544224d29",
+    ".kiro/prompts/speckit.constitution.md": "26ea1f305b23124f8e99ee28e4e9d0a5210264a7bbded2de7e91e729a36fff64",
+    ".kiro/prompts/speckit.implement.md": "31283247950274a6eb3a12e0a7c57114d33aa89b4a3222577bfd80e649c116ff",
+    ".kiro/prompts/speckit.plan.md": "a6ed5819c3a816f1d0081b1685d0754da51e777807b8af3bbd7bab03d57b9cb9",
+    ".kiro/prompts/speckit.checklist.md": "e36be3a85fcf5877138ee56cdedc06e8f65684a3431856ac4b967e42067cceaf",
+    ".kiro/prompts/speckit.specify.md": "c7db741ca2aba64c87a3cefefa13f08956cb2117441ab49a16fd166020fd452b",
+    ".kiro/prompts/speckit.tasks.md": "db3436977280a6727cc0fe41dd7dfebb1fd859d944485a0a55be1b67e4b1903b",
+    ".kiro/prompts/speckit.taskstoissues.md": "167b96888839edbb27c9982f6ad9626679fbe2197fa435fdf033416526aa38d9"
+  }
+}

@@ -1,0 +1,84 @@
+name: Release
+
+# Pushing a semantic-version tag builds installers and attaches them to the
+# matching GitHub Release. No manual packaging or upload.
+on:
+  push:
+    tags: ['v*']
+
+# Only this workflow may write releases; CI stays read-only.
+permissions:
+  contents: write
+
+jobs:
+  # Build unsigned installers on each platform and upload them to a DRAFT
+  # release. The draft stays hidden from users until publish-release flips it.
+  build-release:
+    name: Build installers (${{ matrix.os }})
+    strategy:
+      fail-fast: false # surface a per-platform failure instead of masking it
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pinned Rust toolchain
+        run: rustup show
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      # tauri-action runs the `beforeBuildCommand` from tauri.conf.json, which
+      # installs and builds the frontend, then bundles the installers and
+      # uploads them to the draft release for this tag.
+      - name: Build app and upload to draft release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # ==================== SIGNING EXTENSION POINT ====================
+          # PinShot has NO code-signing certificate. No signing step runs and
+          # NO signing secret is required for this workflow to succeed
+          # (constitution "No code signing" rule; spec FR-015). Artifacts are
+          # intentionally unsigned; the README documents the Gatekeeper /
+          # SmartScreen bypass for users.
+          #
+          # If certificates are ever obtained, signing is enabled here WITHOUT
+          # restructuring the pipeline by providing these env vars:
+          #   macOS:   APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD,
+          #            APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD,
+          #            APPLE_TEAM_ID
+          #   Windows: a signing command configured under
+          #            tauri.conf.json > bundle.windows
+          # =================================================================
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: PinShot ${{ github.ref_name }}
+          releaseBody: |
+            Unsigned alpha build. See the README for first-launch instructions
+            on macOS (Gatekeeper) and Windows (SmartScreen).
+          releaseDraft: true
+          prerelease: true
+
+  # Publish the draft only after BOTH platform builds succeeded. If either leg
+  # of build-release fails, this job is skipped and the release stays a draft
+  # (invisible to users) — no partial/broken release is ever published (FR-010).
+  publish-release:
+    name: Publish release
+    needs: build-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Mark the draft release as published
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --draft=false
