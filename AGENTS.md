@@ -1,7 +1,7 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-`specs/001-github-cicd/plan.md`
+`specs/002-capture-to-output/plan.md`
 
 ## Project snapshot
 
@@ -26,9 +26,9 @@ cd ui && npm ci && npm run lint && npm run format:check && npm run build
 
 ## Spec-driven workflow
 
-Active feature: `specs/002-capture-to-output/` (spec ✅, checklist ✅ — ready for
-`/speckit.plan`). Done: `specs/001-github-cicd/` (CI/CD pipeline, shipped;
-v0.0.1-alpha.1 released). New features: `/speckit.specify` → `/speckit.plan` →
+Active feature: `specs/002-capture-to-output/` (spec ✅, checklist ✅, plan ✅ +
+research/data-model/contracts/quickstart — ready for `/speckit.tasks`). Done:
+`specs/001-github-cicd/` (CI/CD pipeline, shipped; v0.0.1-alpha.1 released). New features: `/speckit.specify` → `/speckit.plan` →
 `/speckit.tasks` → `/speckit.implement`; every plan must pass the Constitution
 Check gate. `main` is branch-protected — all work lands via PR.
 <!-- SPECKIT END -->
