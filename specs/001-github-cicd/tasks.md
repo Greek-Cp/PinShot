@@ -52,7 +52,7 @@ bundles — laid out per Constitution Principle IV (core as a library).
 - [x] T010 [US1] Add triggers `push: branches: [main]` + `pull_request: branches: [main]` (plain `pull_request` — fork-safe, FR-011), plus `workflow_dispatch` for manual re-runs (FR-016)
 - [x] T011 [US1] Add `concurrency` group per ref with `cancel-in-progress: true` so stale runs are superseded (edge case: concurrent pushes)
 - [x] T012 [US1] Add `ci-ok` aggregator job (`needs: [build-test]`, extended by US3) that fails if any needed job failed — the single required status (FR-004/FR-005)
-- [ ] T013 [US1] Validate per quickstart.md: clean run passes on both platforms; broken-test run fails and names the platform; fork PR runs without secrets
+- [x] T013 [US1] Validate per quickstart.md: clean run passes on both platforms; broken-test run fails and names the platform; fork PR runs without secrets
 
 **Checkpoint**: US1 deliverable — dual-platform safety net live; MVP of this feature.
 
@@ -81,7 +81,7 @@ bundles — laid out per Constitution Principle IV (core as a library).
 
 - [x] T018 [US3] Add `quality` job to `.github/workflows/ci.yml` on `ubuntu-latest`: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `npm ci && npm run lint && npm run format:check` in `ui/`; `timeout-minutes: 15`
 - [x] T019 [US3] Wire `quality` into the `ci-ok` aggregator (`needs: [quality, build-test]`) so style violations block merge (FR-006)
-- [ ] T020 [US3] Validate: PR with bad formatting fails `quality` pointing at the file; clean PR passes
+- [x] T020 [US3] Validate: PR with bad formatting fails `quality` pointing at the file; clean PR passes
 
 **Checkpoint**: All three user stories independently functional.
 
