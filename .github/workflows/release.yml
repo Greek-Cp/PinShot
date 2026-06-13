@@ -35,9 +35,17 @@ jobs:
           cache: npm
           cache-dependency-path: ui/package-lock.json
 
-      # tauri-action runs the `beforeBuildCommand` from tauri.conf.json, which
-      # installs and builds the frontend, then bundles the installers and
-      # uploads them to the draft release for this tag.
+      # Build the frontend explicitly (unambiguous working directory). The
+      # tauri.conf.json `beforeBuildCommand` is empty so tauri-action does not
+      # re-run npm from an ambiguous cwd; it just bundles the prebuilt ui/dist.
+      - name: Install & build frontend
+        working-directory: ui
+        run: |
+          npm ci
+          npm run build
+
+      # tauri-action bundles the installers and uploads them to the draft
+      # release for this tag.
       - name: Build app and upload to draft release
         uses: tauri-apps/tauri-action@v0
         env:
