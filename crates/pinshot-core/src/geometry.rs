@@ -52,6 +52,35 @@ impl Rect {
     pub const fn is_empty(&self) -> bool {
         self.width == 0 || self.height == 0
     }
+
+    /// The overlapping rectangle of `self` and `other`, or `None` if they do
+    /// not overlap. Used to blit each display's frozen pixels into a crop.
+    pub fn intersection(&self, other: &Rect) -> Option<Rect> {
+        let ax0 = self.x as i64;
+        let ay0 = self.y as i64;
+        let ax1 = ax0 + self.width as i64;
+        let ay1 = ay0 + self.height as i64;
+        let bx0 = other.x as i64;
+        let by0 = other.y as i64;
+        let bx1 = bx0 + other.width as i64;
+        let by1 = by0 + other.height as i64;
+
+        let x0 = ax0.max(bx0);
+        let y0 = ay0.max(by0);
+        let x1 = ax1.min(bx1);
+        let y1 = ay1.min(by1);
+
+        if x1 <= x0 || y1 <= y0 {
+            None
+        } else {
+            Some(Rect::new(
+                x0 as i32,
+                y0 as i32,
+                (x1 - x0) as u32,
+                (y1 - y0) as u32,
+            ))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -76,5 +105,26 @@ mod tests {
         assert_eq!(Rect::new(0, 0, 4, 3).area(), 12);
         assert!(Rect::new(10, 10, 0, 50).is_empty());
         assert!(!Rect::new(10, 10, 1, 1).is_empty());
+    }
+
+    #[test]
+    fn intersection_overlap() {
+        let a = Rect::new(0, 0, 100, 100);
+        let b = Rect::new(50, 50, 100, 100);
+        assert_eq!(a.intersection(&b), Some(Rect::new(50, 50, 50, 50)));
+    }
+
+    #[test]
+    fn intersection_none_when_disjoint() {
+        let a = Rect::new(0, 0, 10, 10);
+        let b = Rect::new(20, 20, 10, 10);
+        assert_eq!(a.intersection(&b), None);
+    }
+
+    #[test]
+    fn intersection_touching_edges_is_none() {
+        let a = Rect::new(0, 0, 10, 10);
+        let b = Rect::new(10, 0, 10, 10);
+        assert_eq!(a.intersection(&b), None);
     }
 }
