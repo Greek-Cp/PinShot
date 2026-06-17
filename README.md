@@ -87,5 +87,9 @@ so nothing merges unless every platform is green.
 
 ## License
 
-GPL-3.0-or-later (final license decision tracked before the first public
-release — see [about.md](about.md)).
+**GPL-3.0-or-later** — see the [LICENSE](LICENSE) file for the full text.
+
+PinShot is free and open source. You are welcome to use, study, modify, and
+fork it. Because GPL-3.0 is a copyleft license, any distributed fork or
+derivative work **must also stay open source under the same license** — this
+protects PinShot from being turned into a closed-source product.
