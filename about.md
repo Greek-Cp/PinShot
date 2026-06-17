@@ -262,7 +262,7 @@ Tujuan: bisa dipakai harian menggantikan tool screenshot bawaan OS.
 
 ## 8. Lisensi & Komunitas
 
-- **Lisensi:** GPL-3.0 (melindungi dari fork closed-source) — atau MIT/Apache-2.0 jika ingin adopsi maksimal. _Keputusan sebelum rilis publik pertama._
+- **Lisensi:** **GPL-3.0-or-later** (final). Copyleft — bebas dipakai, dipelajari, dimodifikasi, dan di-fork; tapi setiap fork/turunan yang didistribusikan **wajib tetap open source** dengan lisensi yang sama, sehingga tidak bisa dijadikan produk closed-source. Lihat file [LICENSE](LICENSE).
 
 - Kontribusi terbuka: CONTRIBUTING.md, good-first-issue labels, arsitektur terdokumentasi
 

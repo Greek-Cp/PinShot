@@ -6,9 +6,25 @@
 > Snipaste-class app with privacy as the first feature. No accounts, no cloud,
 > no telemetry.
 
-> **Status:** pre-alpha. This repository currently contains the project
-> skeleton and the CI/CD pipeline (spec [`001-github-cicd`](specs/001-github-cicd/)).
-> Capture, pin, OCR, and beautify features are on the [roadmap](about.md).
+> **Status:** pre-alpha. Implemented so far: the CI/CD pipeline
+> (spec [`001-github-cicd`](specs/001-github-cicd/)) and the capture pipeline —
+> region capture to clipboard or PNG, with a selection magnifier and color
+> readout (spec [`002-capture-to-output`](specs/002-capture-to-output/)). Pin,
+> OCR, and beautify are on the [roadmap](about.md).
+
+## Capturing
+
+PinShot runs in the tray/menu bar. To capture:
+
+- Press **Cmd/Ctrl + Shift + A** (or pick **Capture** from the tray icon) — a
+  selection overlay covers every display.
+- **Drag** to select a region. A magnifier, the live width×height, and the pixel
+  color under the cursor are shown.
+- **Enter** copies the selection to the clipboard; **S** saves it as a PNG to
+  `Pictures/PinShot/`; **C** copies the hovered pixel's color; **Esc** (or
+  right-click) cancels.
+
+Everything happens on-device — no network, no account.
 
 ## Architecture
 
@@ -71,5 +87,9 @@ so nothing merges unless every platform is green.
 
 ## License
 
-GPL-3.0-or-later (final license decision tracked before the first public
-release — see [about.md](about.md)).
+**GPL-3.0-or-later** — see the [LICENSE](LICENSE) file for the full text.
+
+PinShot is free and open source. You are welcome to use, study, modify, and
+fork it. Because GPL-3.0 is a copyleft license, any distributed fork or
+derivative work **must also stay open source under the same license** — this
+protects PinShot from being turned into a closed-source product.
