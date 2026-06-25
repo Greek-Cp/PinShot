@@ -4,11 +4,54 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PinShot</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        margin: 0;
+        font:
+          14px/1.5 system-ui,
+          sans-serif;
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+      }
+      main {
+        max-width: 420px;
+        padding: 24px;
+        text-align: center;
+      }
+      h1 {
+        margin: 0 0 8px;
+      }
+      #status {
+        opacity: 0.75;
+      }
+      #error {
+        display: none;
+        margin-top: 16px;
+        padding: 12px 14px;
+        text-align: left;
+        border-radius: 8px;
+        background: #fde8e8;
+        color: #7f1d1d;
+        border: 1px solid #f5c2c2;
+      }
+      @media (prefers-color-scheme: dark) {
+        #error {
+          background: #3b1414;
+          color: #fecaca;
+          border-color: #7f1d1d;
+        }
+      }
+    </style>
   </head>
   <body>
     <main id="app">
       <h1>PinShot</h1>
       <p id="status">Offline screenshot &amp; pin tool.</p>
+      <div id="error" role="alert"></div>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>

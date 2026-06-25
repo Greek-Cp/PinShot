@@ -102,6 +102,7 @@ mod tests {
             width: w,
             height: h,
             rgba,
+            source_png: None,
         }
     }
 

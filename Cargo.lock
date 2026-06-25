@@ -3016,6 +3016,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "dirs",
+ "image",
  "pinshot-core",
  "serde",
  "serde_json",

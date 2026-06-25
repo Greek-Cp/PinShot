@@ -21,6 +21,11 @@ pub fn run() {
             capture::commit_selection,
             capture::copy_color,
             capture::cancel_capture,
+            capture::create_pin,
+            capture::get_pin_image,
+            capture::close_pin,
+            capture::raise_pin,
+            capture::copy_pin,
         ])
         .run(tauri::generate_context!())
         .expect("error while running PinShot");

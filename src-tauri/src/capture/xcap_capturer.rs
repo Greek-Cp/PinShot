@@ -46,6 +46,8 @@ impl ScreenCapturer for XcapCapturer {
                 width,
                 height,
                 rgba: image.into_raw(),
+                // xcap yields raw pixels only; the shell encodes on demand.
+                source_png: None,
             });
         }
 

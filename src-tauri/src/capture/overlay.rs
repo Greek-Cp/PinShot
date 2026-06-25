@@ -28,7 +28,7 @@ pub fn show(app: &AppHandle, displays: &[Display]) -> tauri::Result<()> {
         let lh = f64::from(display.size.1) / scale;
 
         let url = WebviewUrl::App(format!("overlay.html?display={}", display.id).into());
-        WebviewWindowBuilder::new(app, &label, url)
+        let window = WebviewWindowBuilder::new(app, &label, url)
             .title("PinShot Capture")
             .position(lx, ly)
             .inner_size(lw, lh)
@@ -37,7 +37,13 @@ pub fn show(app: &AppHandle, displays: &[Display]) -> tauri::Result<()> {
             .skip_taskbar(true)
             .resizable(false)
             .shadow(false)
+            .focused(true)
             .build()?;
+
+        // Borderless, always-on-top windows on macOS do not reliably become the
+        // key window on creation, so keyboard shortcuts (Enter/S/C/Esc) never
+        // reach the overlay. Explicitly take focus so they do.
+        let _ = window.set_focus();
     }
     Ok(())
 }
