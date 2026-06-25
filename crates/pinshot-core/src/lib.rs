@@ -13,6 +13,7 @@ pub mod crop;
 pub mod encode;
 pub mod geometry;
 pub mod naming;
+pub mod pin;
 pub mod selection;
 
 pub use capture::{CaptureError, CapturedImage, Display, FrozenFrame, ScreenCapturer};
@@ -21,4 +22,5 @@ pub use crop::{crop_region, CropError};
 pub use encode::{to_png, EncodeError};
 pub use geometry::Rect;
 pub use naming::output_filename;
+pub use pin::{pin_logical_size, pin_placement};
 pub use selection::{displays_for, to_physical};

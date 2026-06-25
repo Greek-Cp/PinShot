@@ -8,22 +8,33 @@
 
 mod output;
 mod overlay;
+mod pin;
+// Pixel capture is platform-split: macOS uses the system `screencapture` tool
+// (xcap's CoreGraphics path is broken on macOS 15+), everything else uses xcap.
+#[cfg(target_os = "macos")]
+mod macos_capturer;
+#[cfg(not(target_os = "macos"))]
 mod xcap_capturer;
 
 use std::sync::Mutex;
 
 use base64::Engine;
 use pinshot_core::{
-    crop_region, to_physical, to_png, CaptureError, CapturedImage, Display, FrozenFrame, Rect,
-    ScreenCapturer,
+    crop_region, pin_placement, to_physical, to_png, CaptureError, CapturedImage, Display,
+    FrozenFrame, Rect, ScreenCapturer,
 };
+
+use pin::{PinRegistry, PinnedImage};
 use serde::{Deserialize, Serialize};
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
-use xcap_capturer::XcapCapturer;
+#[cfg(target_os = "macos")]
+use macos_capturer::MacScreencaptureCapturer as PlatformCapturer;
+#[cfg(not(target_os = "macos"))]
+use xcap_capturer::XcapCapturer as PlatformCapturer;
 
 /// Default capture hotkey (area select). Remapping is a later feature.
 const CAPTURE_HOTKEY: &str = "CmdOrCtrl+Shift+A";
@@ -36,14 +47,14 @@ struct CaptureSession {
 
 /// App-wide capture state: the platform capturer and the current session.
 pub struct CaptureState {
-    capturer: XcapCapturer,
+    capturer: PlatformCapturer,
     session: Mutex<Option<CaptureSession>>,
 }
 
 impl CaptureState {
     pub fn new() -> Self {
         Self {
-            capturer: XcapCapturer,
+            capturer: PlatformCapturer,
             session: Mutex::new(None),
         }
     }
@@ -58,6 +69,7 @@ impl Default for CaptureState {
 /// Registers tray, global hotkey, and shared state. Call from the Tauri setup.
 pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     app.manage(CaptureState::new());
+    app.manage(PinRegistry::default());
 
     let capture_item = MenuItemBuilder::with_id("capture", "Capture").build(app)?;
     let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
@@ -101,6 +113,20 @@ pub fn start_capture(app: &AppHandle) {
 
     match state.capturer.capture_all() {
         Ok((displays, frames)) => {
+            // macOS returns an (essentially) black frame, not an error, until
+            // Screen Recording is authorized AND the app has been relaunched.
+            // A very common false-positive: an ad-hoc-signed build whose grant
+            // went stale after a rebuild — the toggle still shows enabled but
+            // the capture is black. Showing the always-on-top overlay then
+            // would just cover the System Settings pane the user needs. Guide
+            // them instead (FR-016).
+            if frames.iter().all(|f| f.is_blank()) {
+                notify_error(
+                    app,
+                    "PinShot can't see your screen. Open System Settings → Privacy & Security → Screen Recording. If PinShot already appears there, remove it with the “−” button, then quit and reopen PinShot and allow it again — after a rebuild the existing permission goes stale even though it still looks enabled. macOS only applies the change after a relaunch.",
+                );
+                return;
+            }
             *state.session.lock().expect("session lock") = Some(CaptureSession {
                 displays: displays.clone(),
                 frames,
@@ -175,12 +201,21 @@ pub fn get_overlay_frame(
         .find(|f| f.display_id == display_id)
         .ok_or("no frame for display")?;
 
-    let image = CapturedImage {
-        width: frame.width,
-        height: frame.height,
-        rgba: frame.rgba.clone(),
+    // Reuse the backend's own PNG (macOS captures straight to PNG) so we never
+    // re-encode the full-screen frame just to draw the backdrop — that encode,
+    // plus cloning the multi-megabyte RGBA buffer, was the overlay's main lag.
+    // Backends without a source PNG (xcap) encode once here as a fallback.
+    let png = match &frame.source_png {
+        Some(bytes) => bytes.clone(),
+        None => {
+            let image = CapturedImage {
+                width: frame.width,
+                height: frame.height,
+                rgba: frame.rgba.clone(),
+            };
+            to_png(&image).map_err(|e| e.to_string())?
+        }
     };
-    let png = to_png(&image).map_err(|e| e.to_string())?;
     let data_url = format!(
         "data:image/png;base64,{}",
         base64::engine::general_purpose::STANDARD.encode(&png)
@@ -256,4 +291,115 @@ pub fn copy_color(hex: String) -> Result<(), String> {
 pub fn cancel_capture(app: AppHandle, state: State<'_, CaptureState>) {
     overlay::close(&app);
     *state.session.lock().expect("session lock") = None;
+}
+
+/// One pinned image, delivered to its pin window.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PinImagePayload {
+    width: u32,
+    height: u32,
+    scale_factor: f64,
+    data_url: String,
+}
+
+/// Result of pinning a selection.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreatePinResponse {
+    pin_id: u32,
+}
+
+/// Pins the (adjusted) selection as a floating window (US1). Crops the frozen
+/// region, stores it, opens a borderless always-on-top window at the capture's
+/// on-screen location, then closes the overlay — mirroring `commit_selection`.
+#[tauri::command]
+pub fn create_pin(
+    app: AppHandle,
+    state: State<'_, CaptureState>,
+    pins: State<'_, PinRegistry>,
+    display_id: u32,
+    rect: RectArg,
+) -> Result<CreatePinResponse, String> {
+    let (image, region, origin, size, scale) = {
+        let guard = state.session.lock().expect("session lock");
+        let session = guard.as_ref().ok_or("no active capture")?;
+        let display = session
+            .displays
+            .iter()
+            .find(|d| d.id == display_id)
+            .ok_or("unknown display")?;
+
+        let logical = Rect::new(rect.x, rect.y, rect.width, rect.height);
+        if logical.is_empty() {
+            return Err("empty_selection".to_string());
+        }
+        let region = to_physical(logical, display);
+        let image =
+            crop_region(&session.frames, &session.displays, region).map_err(|e| e.to_string())?;
+        (
+            image,
+            region,
+            display.origin,
+            display.size,
+            display.scale_factor,
+        )
+    };
+
+    // Full physical size at the display's logical scale; nudged on-screen using
+    // the display's logical bounds as the work area (good enough for v1).
+    let work = Rect::new(
+        (origin.0 as f64 / scale).round() as i32,
+        (origin.1 as f64 / scale).round() as i32,
+        (size.0 as f64 / scale).round() as u32,
+        (size.1 as f64 / scale).round() as u32,
+    );
+    let placement = pin_placement(region, origin, scale, work);
+
+    let pin_id = pins.register(PinnedImage {
+        image,
+        scale_factor: scale,
+    });
+    pin::open_window(&app, pin_id, placement).map_err(|e| e.to_string())?;
+
+    overlay::close(&app);
+    *state.session.lock().expect("session lock") = None;
+    Ok(CreatePinResponse { pin_id })
+}
+
+/// Returns a pin's image (as a PNG data URL) and size for its window.
+#[tauri::command]
+pub fn get_pin_image(pins: State<'_, PinRegistry>, pin_id: u32) -> Result<PinImagePayload, String> {
+    let (image, scale_factor) = pins.snapshot(pin_id).ok_or("unknown pin")?;
+    let png = to_png(&image).map_err(|e| e.to_string())?;
+    let data_url = format!(
+        "data:image/png;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(&png)
+    );
+    Ok(PinImagePayload {
+        width: image.width,
+        height: image.height,
+        scale_factor,
+        data_url,
+    })
+}
+
+/// Closes a single pin (its window and registry entry). Idempotent.
+#[tauri::command]
+pub fn close_pin(app: AppHandle, pins: State<'_, PinRegistry>, pin_id: u32) {
+    pins.remove(pin_id);
+    pin::close_window(&app, pin_id);
+}
+
+/// Brings a pin to the front when the user interacts with it.
+#[tauri::command]
+pub fn raise_pin(app: AppHandle, pin_id: u32) {
+    pin::raise_window(&app, pin_id);
+}
+
+/// Copies a pin's image back to the clipboard (FR-007).
+#[tauri::command]
+pub fn copy_pin(pins: State<'_, PinRegistry>, pin_id: u32) -> Result<(), String> {
+    let (image, _scale) = pins.snapshot(pin_id).ok_or("unknown pin")?;
+    output::copy_image(&image).map_err(|e| e.to_string())
 }

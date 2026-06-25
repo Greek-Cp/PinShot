@@ -53,6 +53,46 @@ impl Rect {
         self.width == 0 || self.height == 0
     }
 
+    /// Returns a copy moved by `(dx, dy)`. Used when the user drags an existing
+    /// selection (or a pin) without changing its size.
+    pub const fn translate(&self, dx: i32, dy: i32) -> Rect {
+        Rect::new(self.x + dx, self.y + dy, self.width, self.height)
+    }
+
+    /// Grows the rectangle so it is at least `min_w × min_h`, keeping the
+    /// top-left origin fixed. Used after a resize so a selection can never
+    /// collapse to a zero/sub-pixel size that has no grabbable handles.
+    pub const fn clamp_min(&self, min_w: u32, min_h: u32) -> Rect {
+        Rect::new(
+            self.x,
+            self.y,
+            if self.width < min_w {
+                min_w
+            } else {
+                self.width
+            },
+            if self.height < min_h {
+                min_h
+            } else {
+                self.height
+            },
+        )
+    }
+
+    /// Constrains the rectangle to lie within `bounds`: first shrinks it to fit
+    /// (never wider/taller than `bounds`), then shifts it so it sits fully
+    /// inside. Used to keep an adjusted selection on its display and to nudge a
+    /// pin back on-screen.
+    pub fn clamp_to(&self, bounds: Rect) -> Rect {
+        let w = self.width.min(bounds.width);
+        let h = self.height.min(bounds.height);
+        let max_x = bounds.x + (bounds.width - w) as i32;
+        let max_y = bounds.y + (bounds.height - h) as i32;
+        let x = self.x.clamp(bounds.x, max_x);
+        let y = self.y.clamp(bounds.y, max_y);
+        Rect::new(x, y, w, h)
+    }
+
     /// The overlapping rectangle of `self` and `other`, or `None` if they do
     /// not overlap. Used to blit each display's frozen pixels into a crop.
     pub fn intersection(&self, other: &Rect) -> Option<Rect> {
@@ -126,5 +166,50 @@ mod tests {
         let a = Rect::new(0, 0, 10, 10);
         let b = Rect::new(10, 0, 10, 10);
         assert_eq!(a.intersection(&b), None);
+    }
+
+    #[test]
+    fn translate_moves_origin_keeps_size() {
+        assert_eq!(
+            Rect::new(10, 20, 30, 40).translate(-5, 7),
+            Rect::new(5, 27, 30, 40)
+        );
+    }
+
+    #[test]
+    fn clamp_min_grows_small_sides_only() {
+        assert_eq!(
+            Rect::new(3, 4, 1, 50).clamp_min(8, 8),
+            Rect::new(3, 4, 8, 50)
+        );
+        // Already large enough → unchanged.
+        assert_eq!(
+            Rect::new(0, 0, 20, 20).clamp_min(8, 8),
+            Rect::new(0, 0, 20, 20)
+        );
+    }
+
+    #[test]
+    fn clamp_to_shifts_inside_bounds() {
+        let bounds = Rect::new(0, 0, 100, 100);
+        // Hanging off the right/bottom edge is shifted back in.
+        assert_eq!(
+            Rect::new(90, 95, 30, 20).clamp_to(bounds),
+            Rect::new(70, 80, 30, 20)
+        );
+        // Negative origin shifted to the top-left corner.
+        assert_eq!(
+            Rect::new(-10, -10, 10, 10).clamp_to(bounds),
+            Rect::new(0, 0, 10, 10)
+        );
+    }
+
+    #[test]
+    fn clamp_to_shrinks_when_larger_than_bounds() {
+        let bounds = Rect::new(0, 0, 50, 50);
+        assert_eq!(
+            Rect::new(-5, -5, 200, 200).clamp_to(bounds),
+            Rect::new(0, 0, 50, 50)
+        );
     }
 }
