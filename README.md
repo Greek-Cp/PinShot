@@ -72,14 +72,46 @@ cargo test --workspace
 ## Installing a release build
 
 Download the latest installer from the [Releases](../../releases) page:
-a `.dmg` for macOS or a `.msi`/`.exe` for Windows.
+a `.dmg` for macOS (Apple Silicon) or a `.msi`/`.exe` for Windows.
 
-> **Builds are unsigned.** PinShot has no code-signing certificate yet, so the
-> OS will warn you on first launch:
->
-> - **macOS:** right-click the app → **Open** (or run
->   `xattr -d com.apple.quarantine /Applications/PinShot.app`).
-> - **Windows:** on the SmartScreen prompt, click **More info → Run anyway**.
+> **Builds are unsigned.** PinShot has no paid code-signing certificate yet, so
+> the OS warns you on first launch. This is expected — follow the steps below.
+
+### macOS — getting past Gatekeeper
+
+Because the app isn't signed/notarized, macOS may show one of:
+
+- *"PinShot can't be opened because Apple cannot check it for malicious software."*
+- *"'PinShot' is damaged and can't be opened."* (common on Apple Silicon when the
+  download is quarantined)
+
+Pick **one** of these:
+
+**Option A — Right-click → Open (simplest)**
+
+1. Open the `.dmg` and drag **PinShot** into **Applications**.
+2. In Applications, **right-click** (or Control-click) **PinShot → Open**.
+3. On the dialog, click **Open** again. macOS remembers this choice for next time.
+
+**Option B — Remove the quarantine flag (use this for the "damaged" error)**
+
+Run this once in Terminal, then open the app normally:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/PinShot.app
+```
+
+**Then grant Screen Recording** (required to capture the screen):
+System Settings → **Privacy & Security → Screen Recording** → enable **PinShot**,
+then quit and reopen it. PinShot lives in the **menu bar** (no Dock icon), so
+look for its tray icon — capture with `⌘⇧A` or the tray's **Capture** item.
+
+> If macOS still blocks it, open **System Settings → Privacy & Security**, scroll
+> to the Security section, and click **Open Anyway** next to the PinShot notice.
+
+### Windows
+
+On the SmartScreen prompt, click **More info → Run anyway**.
 
 ## Privacy
 
