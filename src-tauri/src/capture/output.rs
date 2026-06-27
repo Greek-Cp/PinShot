@@ -50,12 +50,9 @@ pub fn copy_text(text: &str) -> Result<(), OutputError> {
         .map_err(|e| OutputError::ClipboardUnavailable(e.to_string()))
 }
 
-/// Saves the image as a PNG in `Pictures/PinShot/` with a timestamp filename,
-/// avoiding collisions. Returns the path written.
-pub fn save_png(image: &CapturedImage) -> Result<PathBuf, OutputError> {
-    let dir = dirs::picture_dir()
-        .ok_or(OutputError::NoPicturesDir)?
-        .join("PinShot");
+/// Saves the image as a timestamped, collision-free PNG inside `dir` (created if
+/// needed). Returns the path written.
+fn save_png_in(image: &CapturedImage, dir: PathBuf) -> Result<PathBuf, OutputError> {
     std::fs::create_dir_all(&dir).map_err(|e| OutputError::WriteFailed(e.to_string()))?;
 
     let existing: Vec<String> = std::fs::read_dir(&dir)
@@ -79,4 +76,20 @@ pub fn save_png(image: &CapturedImage) -> Result<PathBuf, OutputError> {
     let path = dir.join(name);
     std::fs::write(&path, bytes).map_err(|e| OutputError::WriteFailed(e.to_string()))?;
     Ok(path)
+}
+
+/// Saves the image as a PNG in `Pictures/PinShot/` (the capture "Save" target).
+pub fn save_png(image: &CapturedImage) -> Result<PathBuf, OutputError> {
+    let dir = dirs::picture_dir()
+        .ok_or(OutputError::NoPicturesDir)?
+        .join("PinShot");
+    save_png_in(image, dir)
+}
+
+/// Saves the image as a PNG in `Documents/PinShots/` (the pin "Save" target).
+pub fn save_to_documents(image: &CapturedImage) -> Result<PathBuf, OutputError> {
+    let dir = dirs::document_dir()
+        .ok_or(OutputError::NoPicturesDir)?
+        .join("PinShots");
+    save_png_in(image, dir)
 }

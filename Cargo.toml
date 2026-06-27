@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/pinshot-core", "src-tauri"]
 
 [workspace.package]
-version = "0.0.0"
+version = "0.1.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/Greek-Cp/PinShot"
@@ -22,3 +22,13 @@ strip = true
 lto = true
 codegen-units = 1
 panic = "abort"
+
+# Keep debug builds fast at runtime without paying full optimisation on our own
+# crates' compile time. Dependencies (image PNG encode/decode, etc.) build at -O3
+# so debug capture/pin/export aren't gated on unoptimised codec loops, while our
+# crates stay at -O1 for quick rebuilds.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3

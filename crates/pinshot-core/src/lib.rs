@@ -26,7 +26,7 @@ pub use annotation::{
 };
 pub use capture::{CaptureError, CapturedImage, Display, FrozenFrame, ScreenCapturer};
 pub use color::{hsl_to_rgb, pixel_hex, pixel_rgb, rgb_to_hsl, ColorSample};
-pub use crop::{crop_region, CropError};
+pub use crop::{crop_image, crop_region, CropError};
 pub use encode::{to_jpg, to_png, to_webp, EncodeError};
 pub use geometry::Rect;
 pub use history::{Command, HistoryStack};

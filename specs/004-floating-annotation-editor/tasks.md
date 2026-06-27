@@ -10,7 +10,7 @@ deferred to roadmap v0.3 (Q2); **QR detection kept** (offline, in-core, Q3); a
 pin **keeps its editable annotation document**, flattened only on copy/save (Q4);
 **crop is non-destructive** — reframes + keeps + clips-on-export, undoable (Q5).
 
-**Tests**: Unit tests cover the new/extended `pinshot-core` logic only — the
+**Tests**: Unit test    s cover the new/extended `pinshot-core` logic only — the
 annotation model, flatten/compositing, pixel effects, history undo/redo, QR
 decode, color conversions, encode (PNG/JPG/WebP), and the settings schema. That
 pure logic carries SC-002/004/007/008 (Constitution IV / FR-048). Editor/tray/

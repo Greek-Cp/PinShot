@@ -23,6 +23,7 @@ export default defineConfig({
         pin: resolve(__dirname, 'pin.html'),
         editor: resolve(__dirname, 'editor.html'),
         settings: resolve(__dirname, 'settings.html'),
+        preview: resolve(__dirname, 'preview.html'),
       },
     },
   },

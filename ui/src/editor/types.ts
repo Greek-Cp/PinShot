@@ -32,7 +32,15 @@ export type Tool =
   | 'line'
   | 'pencil'
   | 'highlighter'
-  | 'text';
+  | 'text'
+  | 'blur'
+  | 'pixelate'
+  | 'spotlight'
+  | 'magnifier'
+  | 'stepNumber'
+  | 'colorPicker'
+  | 'crop'
+  | 'eraser';
 
 // AnnotationKind values (serde camelCase). US1 uses the drawing kinds below.
 export type AnnotationKind =

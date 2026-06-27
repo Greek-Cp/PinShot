@@ -15,10 +15,10 @@ use std::sync::Mutex;
 
 use base64::Engine;
 use pinshot_core::{
-    flatten, to_png, Annotation, AnnotationDoc, AnnotationId, AnnotationKind, CapturedImage,
-    Command, Geometry, HistoryStack, Style,
+    crop_image, detect_qr, flatten, pixel_rgb, to_png, Annotation, AnnotationDoc, AnnotationId,
+    AnnotationKind, CapturedImage, ColorSample, Command, Geometry, HistoryStack, Rect, Style,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
 use crate::capture::pin::PinRegistry;
@@ -256,4 +256,109 @@ pub fn editor_export(
 pub fn editor_close(app: AppHandle, state: State<'_, EditState>) {
     window::close(&app);
     *state.session.lock().expect("edit session lock") = None;
+}
+
+// --- Smart tools (US4/US5): offline QR, colour picker, crop ---
+
+/// One decoded QR/barcode for the editor's smart panel.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QrCodeDto {
+    value: String,
+    is_url: bool,
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+}
+
+/// A sampled colour in HEX / RGB / HSL (FR-030).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ColorDto {
+    hex: String,
+    rgb: [u8; 3],
+    hsl: [u16; 3],
+}
+
+/// A logical rectangle from the editor canvas (base-image pixels).
+#[derive(Deserialize)]
+pub struct RectDto {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+}
+
+/// Detects QR/barcodes in the capture, fully offline (FR-027/FR-029).
+#[tauri::command]
+pub fn editor_detect_qr(state: State<'_, EditState>) -> Result<Vec<QrCodeDto>, String> {
+    let guard = state.session.lock().expect("edit session lock");
+    let session = guard.as_ref().ok_or("no active editor")?;
+    let result = detect_qr(&session.doc.base);
+    Ok(result
+        .codes
+        .into_iter()
+        .map(|c| QrCodeDto {
+            value: c.value,
+            is_url: c.is_url,
+            x: c.rect.x,
+            y: c.rect.y,
+            width: c.rect.width,
+            height: c.rect.height,
+        })
+        .collect())
+}
+
+/// Reads a pixel's colour as HEX/RGB/HSL (FR-030).
+#[tauri::command]
+pub fn editor_pick_color(state: State<'_, EditState>, x: u32, y: u32) -> Result<ColorDto, String> {
+    let guard = state.session.lock().expect("edit session lock");
+    let session = guard.as_ref().ok_or("no active editor")?;
+    let base = &session.doc.base;
+    let (r, g, b) = pixel_rgb(&base.rgba, base.width, x, y).ok_or("pixel out of range")?;
+    let sample = ColorSample::from_rgb(r, g, b);
+    Ok(ColorDto {
+        hex: sample.hex,
+        rgb: [sample.rgb.0, sample.rgb.1, sample.rgb.2],
+        hsl: [sample.hsl.0, sample.hsl.1 as u16, sample.hsl.2 as u16],
+    })
+}
+
+/// Re-frames the capture to `rect` (Crop tool, FR-034). Reframes the base and
+/// shifts annotations so they keep their on-image position; anything outside the
+/// new frame is clipped on export (the renderer ignores out-of-bounds pixels).
+#[tauri::command]
+pub fn editor_crop(state: State<'_, EditState>, rect: RectDto) -> Result<DocResponse, String> {
+    with_session(&state, |s| {
+        let r = Rect::new(rect.x, rect.y, rect.width, rect.height);
+        if r.is_empty() {
+            return Err("empty_selection".to_string());
+        }
+        s.doc.base = crop_image(&s.doc.base, r);
+        for a in s.doc.items.iter_mut() {
+            a.geometry = pinshot_core::annotation::geometry::translate(
+                &a.geometry,
+                -(r.x as f32),
+                -(r.y as f32),
+            );
+        }
+        // Crop replaces the base; it is committed (undo of crop is a later
+        // refinement). Existing per-annotation history stays valid.
+        s.revision += 1;
+        Ok(s.response())
+    })
+}
+
+/// Copies text (a QR URL, a colour value, …) to the clipboard — fully offline.
+#[tauri::command]
+pub fn copy_text(text: String) -> Result<(), String> {
+    crate::capture::output::copy_text(&text).map_err(|e| e.to_string())
+}
+
+/// Opens a URL in the OS default browser — an explicit, user-initiated hand-off
+/// (FR-029). Only `http(s)` URLs are allowed; the screenshot is never sent.
+#[tauri::command]
+pub fn open_external(url: String) -> Result<(), String> {
+    crate::external::open_url(&url)
 }

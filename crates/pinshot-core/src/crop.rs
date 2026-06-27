@@ -84,6 +84,37 @@ pub fn crop_region(
     })
 }
 
+/// Crops a sub-rectangle out of an already-captured image (the Crop tool,
+/// FR-034). `rect` is in the image's own pixel space and is clamped to the
+/// image bounds; an empty/out-of-bounds rect yields a 1×1 transparent image so
+/// callers never get a zero-sized buffer. Pure and unit-tested.
+pub fn crop_image(src: &CapturedImage, rect: Rect) -> CapturedImage {
+    let x0 = rect.x.max(0) as u32;
+    let y0 = rect.y.max(0) as u32;
+    let x1 = ((rect.x + rect.width as i32).max(0) as u32).min(src.width);
+    let y1 = ((rect.y + rect.height as i32).max(0) as u32).min(src.height);
+    if x1 <= x0 || y1 <= y0 {
+        return CapturedImage {
+            width: 1,
+            height: 1,
+            rgba: vec![0, 0, 0, 0],
+        };
+    }
+    let (w, h) = (x1 - x0, y1 - y0);
+    let mut rgba = vec![0u8; (w * h * 4) as usize];
+    for row in 0..h {
+        let src_start = (((y0 + row) * src.width + x0) * 4) as usize;
+        let dst_start = (row * w * 4) as usize;
+        rgba[dst_start..dst_start + (w * 4) as usize]
+            .copy_from_slice(&src.rgba[src_start..src_start + (w * 4) as usize]);
+    }
+    CapturedImage {
+        width: w,
+        height: h,
+        rgba,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,5 +219,37 @@ mod tests {
         let wrong = tagged_frame(1, 2, 2, 1);
         let err = crop_region(&[wrong], &[display], Rect::new(0, 0, 2, 2)).unwrap_err();
         assert_eq!(err, CropError::FrameMismatch { display_id: 1 });
+    }
+
+    #[test]
+    fn crop_image_extracts_subrect() {
+        // 3×2 image, each pixel's red channel = x, green = y.
+        let mut rgba = Vec::new();
+        for y in 0..2u8 {
+            for x in 0..3u8 {
+                rgba.extend_from_slice(&[x, y, 0, 255]);
+            }
+        }
+        let src = CapturedImage {
+            width: 3,
+            height: 2,
+            rgba,
+        };
+        let out = crop_image(&src, Rect::new(1, 0, 2, 2));
+        assert_eq!((out.width, out.height), (2, 2));
+        assert_eq!(px(&out, 0, 0), [1, 0, 0, 255]);
+        assert_eq!(px(&out, 1, 1), [2, 1, 0, 255]);
+    }
+
+    #[test]
+    fn crop_image_out_of_bounds_yields_tiny_transparent() {
+        let src = CapturedImage {
+            width: 2,
+            height: 2,
+            rgba: vec![255u8; 2 * 2 * 4],
+        };
+        let out = crop_image(&src, Rect::new(10, 10, 4, 4));
+        assert_eq!((out.width, out.height), (1, 1));
+        assert_eq!(out.rgba, vec![0, 0, 0, 0]);
     }
 }

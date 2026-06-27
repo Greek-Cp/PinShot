@@ -1,22 +1,25 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "PinShot",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "identifier": "com.pinshot.app",
   "build": {
     "frontendDist": "../ui/dist",
     "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "npm --prefix ui run dev",
+    "beforeDevCommand": "",
     "beforeBuildCommand": ""
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "main",
         "title": "PinShot",
         "width": 800,
         "height": 600,
-        "resizable": true
+        "resizable": true,
+        "visible": false,
+        "skipTaskbar": true
       }
     ],
     "security": {
