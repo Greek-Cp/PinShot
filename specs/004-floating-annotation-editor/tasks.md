@@ -17,6 +17,24 @@ pure logic carries SC-002/004/007/008 (Constitution IV / FR-048). Editor/tray/
 settings/pin GUI behaviour, mixed-DPI placement, perf budgets, and offline checks
 are validated manually via quickstart.md (a real desktop session is required).
 
+## Implementation status (2026-06-27)
+
+**Done & unit-tested headless (`cargo test -p pinshot-core`, 80 tests green;
+fmt + clippy `-D warnings` clean; `cargo build --workspace` green)** — the entire
+pure `pinshot-core` foundation:
+
+- T001 core deps (`rqrr`, `serde`, `toml`, image `jpeg`); T004–T009 annotation
+  model, edit geometry/hit-test, **flatten** compositing, **history** undo/redo,
+  encode (PNG + JPG; **WebP deferred**, see T008), lib re-exports.
+- Pulled-forward pure-core pieces: T011 text rasteriser (embedded 5×7 font),
+  T021 blur/pixelate, T038 spotlight/magnify + step renumber, T039 HSL/colour,
+  T034 **offline QR decode** (`rqrr`, real round-trip test), T027 settings schema.
+
+**Remaining (need the Tauri shell + a desktop session to build/validate)**: the
+editor/tray/settings/pin **shell IPC and GUI** — T002–T003, T010, T012–T020,
+T022–T026, T028–T033, T035–T037, T040–T045 — and polish T046–T049. These wire
+the tested core to windows/commands/webviews and are validated via quickstart.md.
+
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: Can run in parallel (different files, no dependencies on incomplete tasks)
@@ -28,7 +46,7 @@ are validated manually via quickstart.md (a real desktop session is required).
 
 ## Phase 1: Setup (Dependencies & Build Wiring)
 
-- [ ] T001 [P] Add `rqrr` (offline QR), `serde` (+`derive`), and `toml` to `crates/pinshot-core/Cargo.toml`; keep `image` (already present) for JPG/WebP encode
+- [x] T001 [P] Add `rqrr` (offline QR), `serde` (+`derive`), and `toml` to `crates/pinshot-core/Cargo.toml`; keep `image` (already present) for JPG/WebP encode
 - [ ] T002 [P] Add two Vite entries `ui/editor.html` and `ui/settings.html` and register them as inputs in `ui/vite.config.ts` (inputs: `index.html`, `overlay.html`, `pin.html`, `editor.html`, `settings.html`)
 - [ ] T003 [P] In `src-tauri/capabilities/default.json`, add capabilities for the editor window (`editor` label) and the settings window (`settings` label), including `core:window:allow-start-dragging` for the editor toolbar drag
 
@@ -41,12 +59,12 @@ are validated manually via quickstart.md (a real desktop session is required).
 **Purpose**: The display-independent annotation model, flatten, history, and the
 editor scaffolding every user story builds on; all unit-tested headless.
 
-- [ ] T004 [P] Create `crates/pinshot-core/src/annotation/mod.rs`: `Annotation { id, kind, geometry, style, z }`, `AnnotationKind` (Rect/Ellipse/Arrow/Line/Pencil/Highlighter/Text/Blur/Pixelate/Spotlight/Magnifier/StepNumber), `Geometry` (Rect/Segment/Path/Anchor/Loupe), `Style` (stroke/fill/opacity/radius/arrow_head/dashed/text/effect/step), and `AnnotationDoc { base: CaptureImage, items }`; unit tests for construction + z-order normalisation
-- [ ] T005 [P] Create `crates/pinshot-core/src/annotation/geometry.rs`: `hit_test(doc, point) -> Option<id>`, `bounds(annotation) -> Rect`, and per-kind `resize`/`translate` reusing 003's `Rect` handle math; unit tests for hit-testing overlap order and resize/move normalisation
-- [ ] T006 [P] Create `crates/pinshot-core/src/annotation/render.rs`: `flatten(&AnnotationDoc) -> Result<CapturedImage, RenderError>` compositing vector kinds (rect/ellipse/arrow/line/pencil/highlighter) onto a copy of the base RGBA at the display scale; effect/text/step kinds are dispatched to their modules (stubs OK until T0xx); DPI-correct; unit tests on small fixtures (SC-002)
-- [ ] T007 [P] Create `crates/pinshot-core/src/history.rs`: `HistoryStack { commands, cursor }` and `Command` (Add/Remove/Mutate/Reorder/Crop/Renumber) with `apply`/`invert`; `undo`/`redo`/`clear`; a new command while `cursor < len` truncates the stale redo tail; unit tests incl. redo-branch truncation (SC-004)
-- [ ] T008 [P] Extend `crates/pinshot-core/src/encode.rs`: add `to_jpg(&CapturedImage, quality)` and `to_webp(&CapturedImage, quality)` alongside `to_png`; unit tests round-trip each format and verify dimensions
-- [ ] T009 Re-export `annotation`, `history`, and the new `encode` items from `crates/pinshot-core/src/lib.rs`
+- [x] T004 [P] Create `crates/pinshot-core/src/annotation/mod.rs`: `Annotation { id, kind, geometry, style, z }`, `AnnotationKind` (Rect/Ellipse/Arrow/Line/Pencil/Highlighter/Text/Blur/Pixelate/Spotlight/Magnifier/StepNumber), `Geometry` (Rect/Segment/Path/Anchor/Loupe), `Style` (stroke/fill/opacity/radius/arrow_head/dashed/text/effect/step), and `AnnotationDoc { base: CaptureImage, items }`; unit tests for construction + z-order normalisation
+- [x] T005 [P] Create `crates/pinshot-core/src/annotation/geometry.rs`: `hit_test(doc, point) -> Option<id>`, `bounds(annotation) -> Rect`, and per-kind `resize`/`translate` reusing 003's `Rect` handle math; unit tests for hit-testing overlap order and resize/move normalisation
+- [x] T006 [P] Create `crates/pinshot-core/src/annotation/render.rs`: `flatten(&AnnotationDoc) -> Result<CapturedImage, RenderError>` compositing vector kinds (rect/ellipse/arrow/line/pencil/highlighter) onto a copy of the base RGBA at the display scale; effect/text/step kinds are dispatched to their modules (stubs OK until T0xx); DPI-correct; unit tests on small fixtures (SC-002)
+- [x] T007 [P] Create `crates/pinshot-core/src/history.rs`: `HistoryStack { commands, cursor }` and `Command` (Add/Remove/Mutate/Reorder/Crop/Renumber) with `apply`/`invert`; `undo`/`redo`/`clear`; a new command while `cursor < len` truncates the stale redo tail; unit tests incl. redo-branch truncation (SC-004)
+- [x] T008 [P] Extend `crates/pinshot-core/src/encode.rs`: add `to_jpg(&CapturedImage, quality)` and `to_webp(&CapturedImage, quality)` alongside `to_png`; unit tests round-trip each format and verify dimensions _(PNG+JPG implemented & tested; WebP deferred — returns `EncodeError::Unsupported` pending a dedicated encoder dependency, plan D6)_
+- [x] T009 Re-export `annotation`, `history`, and the new `encode` items from `crates/pinshot-core/src/lib.rs`
 - [ ] T010 Create the shell editor module skeleton: `src-tauri/src/editor/mod.rs` (the `EditSession { doc, history, tool, props, selected }` state + module decls) and `src-tauri/src/editor/window.rs` (create the borderless floating editor webview); declare `mod editor;` and `manage` the editor state in `src-tauri/src/lib.rs`
 
 **Checkpoint**: `cargo test -p pinshot-core` passes; shell compiles with the editor skeleton.
@@ -64,7 +82,7 @@ bar (no sidebar) → draw a rectangle + arrow + text → press C and paste; the 
 matches the on-screen flatten exactly; Save writes a file; Pin floats the result;
 Esc cancels with no side effects (quickstart §US1).
 
-- [ ] T011 [P] [US1] Create `crates/pinshot-core/src/annotation/text.rs`: `rasterize(&TextStyle, &mut buffer, at)` drawing text (font/size/weight/color/background/shadow) into the RGBA at flatten time; wire it into `render::flatten`; unit test renders a known glyph box (font choice per plan D5)
+- [x] T011 [P] [US1] Create `crates/pinshot-core/src/annotation/text.rs`: `rasterize(&TextStyle, &mut buffer, at)` drawing text (font/size/weight/color/background/shadow) into the RGBA at flatten time; wire it into `render::flatten`; unit test renders a known glyph box (font choice per plan D5)
 - [ ] T012 [US1] In `src-tauri/src/editor/mod.rs`: on **commit** (capture handoff) `crop_region` the frozen selection (reuse 002) into a `CaptureImage`, seed an `EditSession`, and **always** open the editor window (Q1); change `src-tauri/src/capture/mod.rs` `commit_selection` to route to the editor instead of direct output
 - [ ] T013 [US1] Implement the core editor IPC commands in `src-tauri/src/editor/mod.rs` per `contracts/editor-ipc.md`: `set_tool`, `add_annotation`, `update_annotation`, `delete_annotation`, `get_doc`, and `close_editor`; register them in `src-tauri/src/lib.rs`
 - [ ] T014 [US1] Implement `src-tauri/src/editor/export.rs`: `export({target, format})` → `annotation::render::flatten` → clipboard (reuse 002 `output::copy_image`) / file (reuse `encode`+naming) / pin (reuse 003 `create_pin`, **passing the editable doc** per Q4); close the editor on success; wire the `export` command
@@ -89,7 +107,7 @@ undo/redo with a history panel.
 shape live; add 5 annotations → history lists them; Undo ~50/Redo exact;
 Clear History returns the unannotated capture (quickstart §US2).
 
-- [ ] T021 [P] [US2] Create `crates/pinshot-core/src/annotation/effects.rs`: `gaussian_blur(base, region, strength)` and `pixelate(base, region, block)` reading the **original** base pixels (lossless re-edit, Edge Case); wire into `render::flatten`; unit tests on fixtures
+- [x] T021 [P] [US2] Create `crates/pinshot-core/src/annotation/effects.rs`: `gaussian_blur(base, region, strength)` and `pixelate(base, region, block)` reading the **original** base pixels (lossless re-edit, Edge Case); wire into `render::flatten`; unit tests on fixtures
 - [ ] T022 [US2] Add the contextual-properties + history IPC to `src-tauri/src/editor/mod.rs` per `contracts/editor-ipc.md`: `set_tool_props`, `reorder_annotation`, `undo`, `redo`, `clear_history` (driving `history.rs`); register in `src-tauri/src/lib.rs`
 - [ ] T023 [US2] In `ui/src/editor/toolbar.ts`: add the **ContextualProperties** panel that shows ONLY the active tool's controls (Rect: stroke/thickness/fill/opacity/radius; Arrow: color/thickness/arrowhead/dashed; Text: font/size/weight/bg/shadow; Blur: strength; Pixelate: block; Highlighter: opacity) and collapses on tool change (FR-017/FR-018)
 - [ ] T024 [US2] In `ui/src/editor/canvas.ts`: wire Blur/Pixelate/Eraser tools; restyling a selected object calls `update_annotation` live and sets the new value as the default for the next object of that kind (FR-019)
@@ -110,7 +128,7 @@ with recordable hotkeys + conflict detection and persisted local settings.
 menu items present → Settings opens a window → record a new Capture hotkey
 (conflict flagged) → toggle theme; settings persist across restart (quickstart §US3).
 
-- [ ] T027 [P] [US3] Create `crates/pinshot-core/src/settings.rs`: the `Settings` schema (general/capture/hotkeys/annotation/export/advanced) + `defaults`, `validate`, `from_toml`, `to_toml`, and `ExportProfile`/`Hotkey`/`Theme`/`CaptureMode` types; unit tests for defaults + round-trip + corrupt-file fallback; re-export from `lib.rs`
+- [x] T027 [P] [US3] Create `crates/pinshot-core/src/settings.rs`: the `Settings` schema (general/capture/hotkeys/annotation/export/advanced) + `defaults`, `validate`, `from_toml`, `to_toml`, and `ExportProfile`/`Hotkey`/`Theme`/`CaptureMode` types; unit tests for defaults + round-trip + corrupt-file fallback; re-export from `lib.rs`
 - [ ] T028 [US3] Create/extend `src-tauri/src/tray.rs`: native tray/menu-bar menu (**Capture · Settings · About · Check for Updates · Quit**) and set the process to accessory/agent so **no main window** appears (macOS `ActivationPolicy::Accessory`; Windows tray + skip-taskbar) (FR-001/FR-002)
 - [ ] T029 [US3] Create `src-tauri/src/settings/mod.rs`: load/save `Settings.toml` in `dirs::config_dir()/PinShot/` via `core::settings`, apply side effects (theme broadcast `editor://theme`, launch-at-login, reseed editor `ToolProperties`); fall back to defaults on missing/corrupt file (FR-045)
 - [ ] T030 [US3] Create `src-tauri/src/settings/hotkeys.rs`: register/remap global hotkeys via `global-hotkey` and detect conflicts (PinShot-own + detectable OS-reserved) (FR-041)
@@ -130,7 +148,7 @@ Open URL (explicit OS-browser hand-off); plus the color picker plumbing.
 **Independent Test**: Capture a QR → Copy URL / Open URL with the correct decoded
 value; multiple codes → choice; none → graceful; zero network observed (quickstart §US4).
 
-- [ ] T034 [P] [US4] Create `crates/pinshot-core/src/smart/mod.rs` (`SmartResult`, `QrResult`, `ColorSample`) and `crates/pinshot-core/src/smart/qr.rs`: `detect(&CaptureImage) -> QrResult` via `rqrr` (offline); unit tests decoding a fixture QR (0/1/many codes); re-export from `lib.rs`
+- [x] T034 [P] [US4] Create `crates/pinshot-core/src/smart/mod.rs` (`SmartResult`, `QrResult`, `ColorSample`) and `crates/pinshot-core/src/smart/qr.rs`: `detect(&CaptureImage) -> QrResult` via `rqrr` (offline); unit tests decoding a fixture QR (0/1/many codes); re-export from `lib.rs`
 - [ ] T035 [US4] Create `src-tauri/src/smart/mod.rs`: IPC `detect_qr`, `copy_text`, and `open_external({url, reason:"qr"})` per `contracts/smart-tools-ipc.md` — `open_external` is the only outbound, explicit, OS-browser hand-off (FR-029); register in `src-tauri/src/lib.rs`
 - [ ] T036 [US4] Create `ui/src/editor/smart.ts` (QR chip): show detected value(s) with **Copy URL** (`copy_text`) and, for URLs, **Open URL** (`open_external`); surface from the editor on open/edit
 - [ ] T037 [US4] Verify: `cargo test -p pinshot-core` green; manual quickstart §US4 (QR copy/open, multi/none, **zero network** via monitor)
@@ -149,8 +167,8 @@ value; multiple codes → choice; none → graceful; zero network observed (quic
 spotlight dims outside; magnifier zooms; color shows HEX/RGB/HSL copyable; crop to
 16:9 keeps annotations correctly placed; each is undoable (quickstart §US5).
 
-- [ ] T038 [P] [US5] Extend `crates/pinshot-core/src/annotation/effects.rs` with `spotlight(base, region, dim)` and `magnify(base, center, radius, zoom)`, and create `crates/pinshot-core/src/annotation/step.rs` (`next_index`, `renumber`); wire into `render::flatten`; unit tests
-- [ ] T039 [P] [US5] Extend `crates/pinshot-core/src/color.rs` with `rgb_to_hsl`, `hsl_to_rgb`, `format_rgb`, `format_hsl` (alongside existing `pixel_rgb`/`pixel_hex`); unit tests for known conversions; re-export from `lib.rs`
+- [x] T038 [P] [US5] Extend `crates/pinshot-core/src/annotation/effects.rs` with `spotlight(base, region, dim)` and `magnify(base, center, radius, zoom)`, and create `crates/pinshot-core/src/annotation/step.rs` (`next_index`, `renumber`); wire into `render::flatten`; unit tests
+- [x] T039 [P] [US5] Extend `crates/pinshot-core/src/color.rs` with `rgb_to_hsl`, `hsl_to_rgb`, `format_rgb`, `format_hsl` (alongside existing `pixel_rgb`/`pixel_hex`); unit tests for known conversions; re-export from `lib.rs`
 - [ ] T040 [US5] Add `pick_color` and `crop`/`crop_base` IPC: `pick_color` in `src-tauri/src/smart/mod.rs` (color via core), `crop_base` in `src-tauri/src/editor/mod.rs` — **non-destructive** reframe that keeps all items and clips-on-export, pushing a reversible `Crop` command (Q5); register in `src-tauri/src/lib.rs`
 - [ ] T041 [US5] In `ui/src/editor/` (canvas/toolbar/smart): wire the Spotlight, Magnifier, Step Number, Color Picker (HEX/RGB/HSL copy) tools, and the Crop bar (Free/1:1/16:9/4:3)
 - [ ] T042 [US5] Verify: `cargo test -p pinshot-core` green; manual quickstart §US5 (step renumber, spotlight, magnifier, color copy, crop keeps annotations, all undoable)
