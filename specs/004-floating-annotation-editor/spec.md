@@ -9,8 +9,8 @@
 **Input**: Design mockup (`image.png`, "PinShot — Capture. Annotate. Pin.") plus
 product brief: turn PinShot's one-shot capture into a fast, floating,
 keyboard-first annotation experience — a horizontal floating toolbar with
-contextual tool properties, a floating action bar (Pin / Copy / Save / OCR), an
-infinite undo/redo history, smart tools (OCR, QR detection, color picker,
+contextual tool properties, a floating action bar (Pin / Copy / Save), an
+infinite undo/redo history, smart tools (QR detection, color picker,
 spotlight, magnifier, step numbers, crop), a background tray / menu-bar app with
 no main window, and a dedicated Settings window. **No share / cloud / upload /
 shareable-URL feature** — everything stays local.
@@ -47,14 +47,26 @@ syncs, or shares over a network. Local-first, offline-only, no accounts. See
 
 | # | Persona | Context | Primary jobs-to-be-done | What "fast" means to them |
 |---|---|---|---|---|
-| P1 | **Dana, the developer** | Files bug reports, documents APIs, shares error messages | Capture an error → arrow + box the cause → copy into the issue; OCR a stack trace from a video call | Hotkey-to-pasted-annotated-image in < 10 s, hands on keyboard |
+| P1 | **Dana, the developer** | Files bug reports, documents APIs, shares error messages | Capture an error → arrow + box the cause → copy into the issue; redact a token before pasting | Hotkey-to-pasted-annotated-image in < 10 s, hands on keyboard |
 | P2 | **Tomas, the technical writer** | Writes tutorials & docs | Add numbered steps, spotlight a UI region, blur a token, save a crisp PNG | Numbered callouts and redaction without leaving the keyboard |
 | P3 | **Mira, the support agent** | Explains fixes to customers all day | Box the button to click, pin a reference next to the customer's screen, copy | Reuse the same few tools instantly, every ticket |
 | P4 | **Sven, the privacy-conscious office worker** | Shares internal dashboards | Redact sensitive data (blur/pixelate), confirm nothing leaves the machine | Trustworthy redaction; zero network, verifiably |
-| P5 | **Aiko, the multilingual researcher** | Pulls text from images/PDFs | OCR a foreign-language figure, copy the text, open a referenced QR/URL | Reliable offline OCR + one-tap QR/URL |
+| P5 | **Aiko, the researcher** | Captures figures, diagrams & references | Detect a QR/URL in a figure, pick exact brand colors, magnify a detail | One-tap offline QR/URL + color, zero network |
 
 All personas share the same expectation: **the tool disappears between uses**
 (tray/menu bar only) and **reappears instantly** on a hotkey.
+
+---
+
+## Clarifications
+
+### Session 2026-06-27
+
+- Q: After a region is selected, does the editor always open or is there an express (no-editor) output path? → A: The editor **always** opens; instant in-editor Copy/Save/Pin shortcuts serve as the express path (no separate express mode).
+- Q: Should OCR (text extraction) be part of this feature? → A: **No** — OCR is removed and deferred to the roadmap (v0.3); Search/Translate are dropped with it.
+- Q: Should QR code detection stay? → A: **Yes** — QR detection remains an offline, in-core smart feature (Copy URL / Open URL).
+- Q: When pinning from the editor, does the pin store a flat image or the editable annotations? → A: The pin **keeps the editable annotation document**; pixels are flattened only on copy/save (so annotate-after-pin is native).
+- Q: What happens to annotations when cropping after annotating? → A: Crop **reframes and keeps** all annotations; those outside the new frame are clipped on export (not deleted), reversible via undo.
 
 ---
 
@@ -62,8 +74,8 @@ All personas share the same expectation: **the tool disappears between uses**
 
 This feature builds directly on the existing pipeline — **002** (trigger →
 overlay → select → crop → clipboard/file) and **003** (adjustable selection +
-floating pin). After a region is selected and the user chooses **Edit** (the new
-default landing), a **floating annotation editor** opens over the frozen capture.
+floating pin). After a region is selected and committed, a **floating annotation
+editor always opens** over the frozen capture (Clarification Q1).
 The same headless `pinshot-core` crop/encode core is reused; this spec adds the
 annotation model, flatten/compositing, smart tools, the app shell (tray +
 Settings), and export options.
@@ -94,7 +106,7 @@ filesystem unchanged.
 
 **Acceptance Scenarios**:
 
-1. **Given** a committed selection, **When** the user enters edit, **Then** a floating horizontal toolbar and a floating action bar (Pin / Copy / Save / OCR / More) appear over the captured image, with no left/right sidebar and no separate editor window chrome.
+1. **Given** a committed selection, **When** the user enters edit, **Then** a floating horizontal toolbar and a floating action bar (Pin / Copy / Save / More) appear over the captured image, with no left/right sidebar and no separate editor window chrome.
 2. **Given** the Rectangle tool is active, **When** the user drags on the image, **Then** a rectangle annotation is created live and remains an editable object (selectable, movable, restyle-able, deletable).
 3. **Given** the Arrow tool, **When** the user drags while holding Shift, **Then** the arrow snaps to straight angles; **When** the user scrolls, **Then** the stroke thickness changes live.
 4. **Given** one or more annotations, **When** the user presses Copy (C), **Then** the captured image with all annotations flattened on top is placed on the clipboard, pixel-identical to what is shown.
@@ -168,32 +180,30 @@ works; toggle theme and confirm the editor honors it.
 
 ---
 
-### User Story 4 - Smart text & code capture: OCR and QR (Priority: P3)
+### User Story 4 - Smart code capture: QR detection (Priority: P3)
 
-As Aiko, after capturing a figure I press **OCR** and PinShot extracts the text
-**entirely offline**, offering **Copy Text** (and optional, clearly user-initiated
-Search/Translate). If the capture contains a **QR code**, PinShot detects it
-automatically and offers **Open URL / Copy URL** — no internet round-trip to read
-it.
+As Aiko, if a capture contains a **QR code** PinShot detects it **automatically
+and entirely offline** and offers **Copy URL** (and, for URLs, **Open URL**) — no
+internet round-trip to read the code, and the screenshot itself never leaves the
+machine.
 
-**Why this priority**: OCR is PinShot's public-launch differentiator (roadmap
-v0.3) and QR detection is a high-delight, low-cost companion. Both are
-independently valuable and reuse the captured-image pipeline, but they sit above
-the core editor (US1/US2) and shell (US3).
+**Why this priority**: QR detection is a high-delight, low-cost smart feature that
+reuses the captured-image pipeline and is fully offline. It sits above the core
+editor (US1/US2) and shell (US3). (Offline **OCR** text extraction is a separate,
+later roadmap item — v0.3 — and is intentionally **not** part of this feature.)
 
-**Independent Test**: Capture an area containing printed text; press OCR and
-confirm the extracted text is available to copy and matches the source. Capture
-an area containing a QR code; confirm PinShot offers Open URL / Copy URL with the
-decoded value. Verify with a network monitor that neither action issues a network
-request (the optional Open URL / Search hands off to the OS browser by explicit
-user action).
+**Independent Test**: Capture an area containing a QR code; confirm PinShot offers
+Copy URL and (for a URL) Open URL with the correctly decoded value. Capture an
+area with no code; confirm a graceful "no code found". Verify with a network
+monitor that detection issues **no** network request and that Open URL only
+launches the OS browser on an explicit click.
 
 **Acceptance Scenarios**:
 
-1. **Given** a captured image containing legible text, **When** the user invokes OCR, **Then** the recognized text is presented with a Copy Text action and matches the source within OCR tolerance — produced fully offline.
-2. **Given** recognized OCR text, **When** the user invokes the optional Search or Translate action, **Then** PinShot hands the text to an external app/OS by explicit user action only (never silently), and this is clearly labeled as leaving the offline boundary.
-3. **Given** a captured image containing a QR code or supported barcode, **When** edit/OCR runs, **Then** PinShot detects it offline and offers Open URL and Copy URL using the decoded value.
-4. **Given** no text/QR is present, **When** the user invokes OCR, **Then** PinShot reports "no text found" gracefully without error.
+1. **Given** a captured image containing a QR code or supported barcode, **When** edit runs, **Then** PinShot detects it **offline** and offers **Copy URL** / **Open URL** using the decoded value.
+2. **Given** a decoded URL, **When** the user invokes **Open URL**, **Then** PinShot hands the URL to the OS default browser by explicit user action only (never silently), and the screenshot itself is never transmitted.
+3. **Given** a captured image with **multiple** codes, **When** detection runs, **Then** PinShot offers a choice among the decoded values.
+4. **Given** no decodable code is present, **When** detection runs, **Then** PinShot reports "no code found" gracefully without error and without any network call.
 
 ---
 
@@ -208,7 +218,7 @@ after capture.
 **Why this priority**: These are the "smart features" that make documentation and
 design-review screenshots shine. They are each small, independent tools layered
 on the US1/US2 annotation model and are roadmap-polish (v0.5), so they rank below
-OCR/QR.
+QR detection.
 
 **Independent Test**: Use each tool in turn on a capture — place three step
 numbers and confirm they auto-increment and recolor; apply Spotlight and confirm
@@ -257,10 +267,9 @@ confirm it persists on that pin.
 - **Capture spanning mixed-DPI displays**: The editor MUST show and flatten the capture at correct physical size; outputs MUST be DPI-exact across the display seam (highest-risk area, mandatory test).
 - **Very large capture**: The editor MUST remain responsive (60 fps interactions) and stay within the idle/active memory budget; flatten/encode MUST not block the UI thread.
 - **Undo across tool switches & smart tools**: Undo/redo MUST treat blur, spotlight, magnifier, crop, and step numbers as ordinary history entries; redo after a new edit MUST discard the orphaned redo branch predictably.
-- **Crop after annotating**: Re-cropping MUST keep existing annotations correctly positioned relative to the new frame (or clearly define that annotations outside the crop are removed/clipped).
+- **Crop after annotating**: Re-cropping MUST reframe the base and keep all annotations correctly positioned relative to the new frame; annotations falling outside the new frame MUST be clipped in the exported output but retained in the document, so crop is non-destructive and reversible via undo.
 - **Blur/pixelate of moving region**: Editing a blur region's bounds MUST re-derive the obscured pixels from the original capture, never from already-blurred output (no irreversible double-blur during editing).
-- **OCR with no text / unsupported language**: MUST report "no text found" or "language unavailable" gracefully; MUST never hang or call the network.
-- **QR with multiple codes**: MUST handle 0, 1, or many codes — offering a choice when more than one is found.
+- **QR detection edge cases**: Detection MUST handle 0, 1, or many codes — reporting "no code found" gracefully and offering a choice when more than one is found; decoding MUST never hang or call the network.
 - **Hotkey conflict**: Recording a shortcut already used by PinShot or reserved by the OS MUST be detected and the user warned before saving.
 - **Theme = system + OS theme change**: Switching OS appearance while the editor is open MUST update the UI without a restart.
 - **Click-through pin with no escape**: A click-through pin MUST always retain a non-click-through way to regain control (e.g., a hotkey or the tray menu) so the user is never trapped.
@@ -291,7 +300,7 @@ confirm it persists on that pin.
 
 - **FR-009**: The editor MUST present a single **floating, horizontal toolbar** for tools and a **floating action bar** for outputs — it MUST NOT use a left sidebar, a right sidebar, or a Photoshop-style multi-panel layout.
 - **FR-010**: The floating toolbar and action bar MUST be repositionable (draggable) and remain visually associated with the capture.
-- **FR-011**: The action bar MUST offer **Pin**, **Copy**, **Save**, **OCR**, and **More** — and MUST NOT offer any Share / upload / cloud / shareable-URL action.
+- **FR-011**: The action bar MUST offer **Pin**, **Copy**, **Save**, and **More** — and MUST NOT offer any Share / upload / cloud / shareable-URL action.
 - **FR-012**: The editor MUST be keyboard-first: every tool and every action MUST have a keyboard shortcut, and **Esc** MUST cancel/close the editor with no side effects.
 
 #### Annotation tools & objects (US1 core, US2 full)
@@ -317,14 +326,16 @@ confirm it persists on that pin.
 
 - **FR-023**: **Copy** MUST flatten all annotations onto the capture and place the result on the clipboard, pixel-identical to what is shown.
 - **FR-024**: **Save** MUST flatten and write a file in the configured format and location with the configured filename pattern.
-- **FR-025**: **Pin** MUST create a floating, always-on-top pin of the flattened (or live-editable, per US6) result, reusing feature 003.
-- **FR-026**: Output actions MUST be reachable both from the action bar and via keyboard shortcuts (Pin/Copy/Save and OCR).
+- **FR-025**: **Pin** MUST create a floating, always-on-top pin that carries the **editable annotation document** (pixels flattened only on copy/save), reusing feature 003 — so annotate-after-pin (US6) is the same model, not a separate layer.
+- **FR-026**: Output actions MUST be reachable both from the action bar and via keyboard shortcuts (Pin/Copy/Save).
 
-#### Smart tools — OCR & QR (US4)
+#### Smart tools — QR detection (US4)
 
-- **FR-027**: **OCR** MUST extract text from the captured image **fully offline** using the platform engine (macOS Vision / Windows OCR), and offer **Copy Text**.
-- **FR-028**: PinShot MAY offer **Search** and **Translate** on OCR text, but only as **explicit, user-initiated** actions that hand text to an external app/OS; these MUST be clearly labeled as leaving the offline boundary and MUST be OFF/absent by default where they would require network. PinShot's core MUST NOT itself perform any network request for them.
-- **FR-029**: **QR / barcode detection** MUST run offline on the captured image; when one or more codes are found, PinShot MUST offer **Open URL** and **Copy URL** (or copy raw value) for each.
+- **FR-027**: **QR / barcode detection** MUST run **fully offline** in `pinshot-core` on the captured image, handling zero, one, or many codes.
+- **FR-028**: When one or more codes are found, PinShot MUST offer **Copy** of each decoded value (e.g., **Copy URL**) — a fully offline clipboard action.
+- **FR-029**: For codes whose value is a URL, PinShot MUST offer **Open URL** as an **explicit, user-initiated** hand-off to the OS default browser (never silent, never sending the image itself); PinShot's core MUST NOT perform the network request.
+
+> Offline **OCR** (text extraction) and any **Search/Translate** on extracted text are **out of scope** for this feature and deferred to the roadmap (see [Future Roadmap](#future-roadmap-deliverable-20)).
 
 #### Smart tools — visual (US5)
 
@@ -332,7 +343,7 @@ confirm it persists on that pin.
 - **FR-031**: The **Spotlight** tool MUST darken everything outside a chosen region in the output, with adjustable dim strength.
 - **FR-032**: The **Magnifier** tool MUST render a circular loupe of the underlying pixels at an adjustable zoom into the image.
 - **FR-033**: The **Step Number** tool MUST place auto-incrementing numbered markers (1, 2, 3 …) with an editable color, renumbering consistently when a marker is added or removed.
-- **FR-034**: The **Crop/Resize** tool MUST allow re-cropping the capture after the fact with **Free, 1:1, 16:9, and 4:3** constraints; the committed output MUST contain exactly the new frame.
+- **FR-034**: The **Crop/Resize** tool MUST allow re-cropping the capture after the fact with **Free, 1:1, 16:9, and 4:3** constraints; committing MUST reframe the base so the output contains exactly the new frame while keeping existing annotations — any falling outside the new frame are clipped on export, not deleted, and the crop is reversible via undo.
 
 #### Advanced pin (US6)
 
@@ -355,7 +366,7 @@ confirm it persists on that pin.
 
 - **FR-046**: The entire feature MUST operate **fully offline** — no component of the core may issue a network request. The update check MUST remain isolated, opt-in, and default OFF, fetching only a static version file when explicitly invoked.
 - **FR-047**: PinShot MUST NOT provide any **Share / cloud / upload / shareable-URL** capability anywhere; the only outputs are clipboard, local file, pin, and OS-level drag-and-drop. (The "Share" item in the source mockup is intentionally excluded.)
-- **FR-048**: The annotation model, flatten/compositing, blur/pixelate/spotlight/magnifier pixel operations, QR decode, color math, crop, and PNG/JPG/WebP encoding MUST live in the headless `pinshot-core` crate and be **unit-testable without a display**; platform-specific OCR/clipboard/window behavior MUST sit behind traits.
+- **FR-048**: The annotation model, flatten/compositing, blur/pixelate/spotlight/magnifier pixel operations, QR decode, color math, crop, and PNG/JPG/WebP encoding MUST live in the headless `pinshot-core` crate and be **unit-testable without a display**; platform-specific clipboard/window/capture behavior MUST sit behind traits.
 - **FR-049**: All behavior MUST be **equivalent on macOS and Windows** (Cross-Platform Parity), including mixed-DPI multi-monitor correctness for the editor, smart tools, and pins.
 - **FR-050**: The feature MUST meet the performance budgets in [Non-Functional Requirements](#non-functional-requirements-deliverable-4).
 
@@ -376,7 +387,7 @@ confirm it persists on that pin.
 - **Annotation**: An editable vector/effect object placed on the capture — has a type (Rectangle, Ellipse, Arrow, Line, Pencil, Highlighter, Text, Blur, Pixelate, Spotlight, Magnifier, StepNumber), geometry, style, and z-index.
 - **ToolProperties**: The current style values for each tool (stroke/fill/opacity/font/etc.), shown in the contextual panel and used as defaults for new objects.
 - **HistoryStack**: The ordered command/annotation history enabling unlimited undo/redo and the history panel.
-- **SmartResult**: Output of a smart tool — `OcrResult` (text + regions), `QrResult` (decoded values), `ColorSample` (HEX/RGB/HSL).
+- **SmartResult**: Output of a smart tool — `QrResult` (decoded values + regions) and `ColorSample` (HEX/RGB/HSL).
 - **ExportProfile**: Format (PNG/JPG/WebP), filename pattern, compression, and clipboard behavior used by Save/Copy.
 - **Settings**: The persisted, human-readable configuration (General, Capture, Hotkeys, Annotation, Export, Advanced).
 - **Hotkey**: A user-customizable binding from a key chord to an action, with conflict state.
@@ -393,13 +404,13 @@ confirm it persists on that pin.
         │  Capture hotkey (e.g. ⌘⇧A) — or tray ▸ Capture
         ▼
 [capture overlay]  freeze screen → drag/adjust selection (002/003)
-        │  release / confirm  ──►  Edit (default)        ──►  or direct Copy/Save/Pin (express)
+        │  release / confirm  ──►  editor ALWAYS opens (instant C/S/P = express)
         ▼
 [floating editor]  toolbar + action bar appear over the capture
         │  pick tool (keyboard) → toolbar shows that tool's properties
         │  draw / restyle / undo-redo  (history panel tracks the stack)
         ▼
-[output]  Copy (C) │ Save (S) │ Pin (P) │ OCR │ More
+[output]  Copy (C) │ Save (S) │ Pin (P) │ More
         ▼
 [back to idle]  editor closes; pins (if any) keep floating
 ```
@@ -407,12 +418,11 @@ confirm it persists on that pin.
 **Smart-tool sub-flows:**
 
 ```
-OCR:  action bar ▸ OCR  →  offline text extracted  →  Copy Text │ (Search/Translate*)
-QR:   detected on edit/OCR  →  Open URL │ Copy URL
+QR:   detected on edit (offline)  →  Copy URL │ Open URL*
 Color:tool ▸ Color Picker  →  hover pixel  →  HEX/RGB/HSL  →  copy
-Crop: tool ▸ Crop  →  Free│1:1│16:9│4:3  →  commit re-frames the output
+Crop: tool ▸ Crop  →  Free│1:1│16:9│4:3  →  reframe (keeps annotations)
 ```
-\* Search/Translate are explicit, user-initiated hand-offs to the OS/browser (FR-028).
+\* Open URL is an explicit, user-initiated hand-off to the OS browser (FR-029).
 
 **Settings flow:** tray ▸ Settings → normal window → tabs (General / Capture /
 Hotkeys / Annotation / Export / Advanced) → change persists to local file → tray
@@ -437,8 +447,8 @@ PinShot (background agent, no main window)
 │   │   └── Contextual properties  (expands per active tool)
 │   ├── Canvas                     (capture + annotation objects)
 │   ├── History panel              (annotation stack, clear)
-│   └── Floating action bar        (Pin · Copy · Save · OCR · More)
-│       └── Smart results          (OCR text · QR URL · Color values)
+│   └── Floating action bar        (Pin · Copy · Save · More)
+│       └── Smart results          (QR URL · Color values)
 ├── Pin windows            (003 + US6)  ← persistent until closed
 │   └── opacity · click-through · resize · annotate
 └── Settings window        (US3)        ← on demand
@@ -462,14 +472,13 @@ transient overlay or a borderless floating surface — reinforcing the
 - **Layout**: the capture image centered; a **horizontal floating toolbar** detached above/below it; a **floating action bar** below; an optional **history panel** and **contextual properties** panel that appear contextually — **never** docked sidebars (FR-009).
 - **Toolbar (tools, left→right)**: Select · Rectangle · Ellipse · Arrow · Line · Pencil · Highlighter · Text · Blur · Pixelate · Spotlight · Magnifier · Color Picker · Step Number · Crop · Eraser · Undo · Redo · More.
 - **Contextual properties**: replaces the tool row's extension with the active tool's controls only (FR-017/FR-018); e.g., Rectangle → Stroke (swatches + custom) · Thickness (1/2/4/8) · Fill (toggle + color) · Opacity (slider) · Radius.
-- **Action bar**: Pin (P) · Copy (C) · Save (S) · OCR · More (FR-011). No Share.
+- **Action bar**: Pin (P) · Copy (C) · Save (S) · More (FR-011). No Share.
 - **History panel**: ordered list of annotations with type icons + Clear History (FR-020/FR-022).
 - **Affordances/Hints**: footer micro-hints ("Drag to move · Hold Shift for straight lines · Scroll to change thickness · Esc to cancel"); selection handles on the active object; live dimension/coordinate readout reused from 002.
 - **Theme**: honors Light/Dark/System (NFR-005).
 
 ### S3 — Smart result surfaces
-- **OCR panel**: extracted text in a scrollable, selectable field + Copy Text (+ optional Search/Translate, clearly marked) (FR-027/FR-028).
-- **QR chip**: detected value(s) with Open URL / Copy URL (FR-029).
+- **QR chip**: detected value(s) with **Copy URL** and (for URLs) **Open URL** (FR-027–FR-029).
 - **Color readout**: swatch + HEX/RGB/HSL rows, each copyable (FR-030).
 - **Crop bar**: Free / 1:1 / 16:9 / 4:3 toggles + commit (FR-034).
 
@@ -491,8 +500,8 @@ transient overlay or a borderless floating surface — reinforcing the
 | `Canvas` | Render capture + annotation objects; hit-test; live draw | objects[], selection, zoom | 60 fps; non-blocking (NFR-003) |
 | `AnnotationObject` | One editable shape/effect | type, geometry, style, z | Editable until output (FR-015) |
 | `HistoryPanel` | List + navigate the stack | entries[], cursor | Clear History (FR-022) |
-| `ActionBar` | Pin/Copy/Save/OCR/More | enabled per state | No Share (FR-047) |
-| `SmartResultPanel` | Present OCR/QR/Color results | result kind + payload | Copy actions; offline (FR-027–FR-030) |
+| `ActionBar` | Pin/Copy/Save/More | enabled per state | No Share (FR-047) |
+| `SmartResultPanel` | Present QR/Color results | result kind + payload | Copy actions; offline (FR-027–FR-030) |
 | `PinWindow` | Floating image surface | opacity, clickThrough, scale | Extends 003 (FR-035–FR-038) |
 | `TrayMenu` | Native entry point | menu items | Native, not webview (FR-002) |
 | `SettingsWindow` | Edit & persist settings | tab, dirty | Only normal window (FR-003) |
@@ -514,7 +523,6 @@ hotkeys are global.
 | Capture Window | ⌘⇧W | Ctrl+Shift+W |
 | Capture Full Screen | ⌘⇧S | Ctrl+Shift+S |
 | Pin (clipboard → pin) | ⌘P | Ctrl+P |
-| OCR (capture text) | ⌘⇧O | Ctrl+Shift+O |
 | Show/Hide all pins | ⌘⇧H | Ctrl+Shift+H |
 
 **Editor — tools (single key):**
@@ -539,7 +547,6 @@ hotkeys are global.
 | Copy | C | C |
 | Save | S | S |
 | Pin | P | P |
-| OCR | ⌘⇧O | Ctrl+Shift+O |
 | Undo | ⌘Z | Ctrl+Z |
 | Redo | ⌘⇧Z | Ctrl+Shift+Z |
 | Cancel/Close editor | Esc | Esc |
@@ -563,7 +570,7 @@ Scroll = stroke thickness; Alt/Option = draw from center (where applicable).
 - **SC-004**: Undo/redo restores exact state for **≥ 50** consecutive operations with no limit hit and no visual divergence; Clear History returns the unannotated capture.
 - **SC-005**: On launch, **no** window and **no** dock/taskbar app entry appears — only a tray/menu-bar icon; Settings is the only normal window that ever opens.
 - **SC-006**: A user can record a new hotkey for any action, conflicts are flagged, and the action responds to the new binding after save and after restart.
-- **SC-007**: OCR extracts copyable text matching the source within OCR tolerance, and QR detection yields the correct URL — both with **zero** network requests observed.
+- **SC-007**: QR detection yields the correct decoded URL/value with **zero** network requests observed; **Open URL** only launches the OS browser on an explicit click, and never transmits the screenshot.
 - **SC-008**: Each visual smart tool (Spotlight, Magnifier, Step Number, Color Picker, Crop) produces the specified effect in the output and is fully undoable.
 - **SC-009**: Startup **< 300 ms**, capture overlay **< 100 ms**, interactions sustain **60 fps**, idle memory **< 120 MB**, idle CPU ≈ 0 — measured on baseline hardware.
 - **SC-010**: **Zero** network requests occur across capture → annotate → smart tools → output, verifiable with a network monitor; there is **no** Share/upload/cloud affordance anywhere in the UI.
@@ -574,25 +581,26 @@ Scroll = stroke thickness; Alt/Option = draw from center (where applicable).
 - **Builds on 002 + 003**: The trigger → overlay → select → adjust → crop/encode →
   pin pipeline and the frozen-frame model are reused unchanged except where this
   spec extends them. The editor is a new transient surface between selection and
-  output; an "express" path (commit straight to Copy/Save/Pin without editing)
-  remains available.
-- **Edit as default landing**: After a selection commit, the floating editor is
-  the default next step; whether Copy/Save/Pin without editing requires a
-  modifier or a separate action is a planning decision.
+  output; it **always** opens on commit (Q1), and the instant in-editor
+  Copy/Save/Pin shortcuts are the express path (no editor-skipping mode).
+- **Edit as default landing (resolved)**: After a selection commit the floating
+  editor **always** opens; there is no separate "express" mode — the in-editor
+  Copy/Save/Pin shortcuts act instantly, so selecting and then immediately
+  pressing C/S/P is the fast path.
 - **Annotation model lives in core**: Annotation objects, hit-testing geometry,
   flatten/compositing, and blur/pixelate/spotlight/magnifier pixel ops are pure
   `pinshot-core` logic; the TypeScript canvas renders the live preview and
   forwards intents (Constitution IV). The exact rendering split (core rasterize
   vs. canvas preview then core flatten-on-export) is finalized in `plan.md`.
-- **OCR engines**: macOS uses Apple Vision; Windows uses `Windows.Media.Ocr`;
-  both offline. Tesseract is an optional later fallback for additional languages
-  (roadmap), not required here. Initial languages: English + Indonesian.
-- **QR decode is offline & in-core**: A pure-Rust offline decoder runs in
-  `pinshot-core`; "Open URL" hands off to the OS browser by explicit user action.
-- **Search/Translate are out-of-scope-for-offline**: Any web Search or online
-  Translate is an explicit, clearly-labeled hand-off to the OS/browser, never a
-  silent core request; an offline translate engine, if added, is a later concern
-  (FR-028). They may be hidden by default.
+- **OCR is out of scope (resolved)**: Text extraction (OCR) and any Search/
+  Translate on extracted text are **removed from this feature** and deferred to
+  the roadmap (v0.3). No OCR action, engine, or hotkey ships here.
+- **QR decode is offline & in-core (resolved)**: A pure-Rust offline decoder runs
+  in `pinshot-core`; **Copy URL** is a local clipboard action and **Open URL** is
+  an explicit, user-initiated hand-off to the OS browser (FR-029).
+- **Pin keeps editable annotations (resolved)**: A pin created from the editor
+  carries its annotation document and is flattened only when copied or saved, so
+  annotating a pin afterward (US6) uses the same model rather than a new layer.
 - **Export formats**: PNG (default), JPG, WebP via the `image` crate; compression
   applies to JPG/WebP. Filename pattern extends 002's timestamp naming.
 - **Settings storage**: A single local TOML (or JSON) file in the OS config dir;
@@ -605,7 +613,7 @@ Scroll = stroke thickness; Alt/Option = draw from center (where applicable).
 - **Scope delivery**: This spec captures the **complete** Floating Editor design
   vision for coherence, but it ships in the prioritized, independently-shippable
   slices (US1→US6) and respects the constitution's roadmap order (annotation →
-  shell/settings → OCR/QR → polish tools → advanced pin). Later slices MUST NOT
+  shell/settings → QR/visual tools → advanced pin). Later slices MUST NOT
   destabilize earlier ones.
 - **No signing**: Builds remain unsigned (constitution); nothing here requires
   signing or certificates.
@@ -615,7 +623,7 @@ Scroll = stroke thickness; Alt/Option = draw from center (where applicable).
 | Horizon | Candidate enhancements (not in this spec) |
 |---|---|
 | **Next** | Scrolling/long capture; capture Window/Full-Screen modes wired to the editor; drag-and-drop the annotated image into other apps |
-| **OCR+** | Tesseract fallback for CJK & more languages; OCR region selection; searchable history by OCR text |
+| **OCR** | Offline OCR (macOS Vision / Windows OCR): extract → Copy Text, plus optional Search/Translate hand-offs; Tesseract for more languages; searchable OCR history — **deferred from this feature** to v0.3 |
 | **Beautify** | Background/padding/shadow/rounded-corner "beautify" export presets + social aspect ratios (about.md pillar) |
 | **Pins** | Pin persistence across restarts (local, privacy-respecting); pin groups/workspaces; rotate/flip; double-click actions |
 | **Smart** | Auto-redact (detect emails / tokens / numbers → one-click blur); barcode types beyond QR |
@@ -634,5 +642,5 @@ the offline / no-share / no-account constitution.
 - ❌ Telemetry or analytics in any form.
 - ❌ A layered photo/design editor, permanent sidebars, or a Photoshop/Figma/Canva
   layout.
-- ❌ Any online-API AI feature; OCR/QR/color are all offline.
+- ❌ Any online-API AI feature; QR and color are all offline (OCR is deferred to a later version, not made online).
 - ❌ Screen recording (per constitution, before v1.0).

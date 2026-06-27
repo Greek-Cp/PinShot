@@ -14,8 +14,8 @@ Covers (FR-048): the annotation model + hit-test/resize geometry, **flatten**
 compositing (DPI-correct, SC-002), pixel **effects** (blur/pixelate/spotlight/
 magnifier on fixtures), **history** undo/redo (incl. redo-branch truncation,
 SC-004), **QR** decode (offline), **color** conversions (HEX/RGB/HSL, SC-008),
-**encode** (PNG/JPG/WebP round-trips), **settings** schema defaults/validation,
-and **OCR-consuming logic via a fake `OcrEngine`**.
+**encode** (PNG/JPG/WebP round-trips), and **settings** schema defaults/validation.
+(No OCR ships in this feature, so there is no OCR test target.)
 
 ## Full workspace gates
 
@@ -49,9 +49,10 @@ The app starts **in the tray / menu bar with no window** (SC-005).
 
 ## US1 — annotate → copy / save / pin
 
-1. Press *Capture Region*, select a region, choose **Edit** → a **floating
-   horizontal toolbar** + **action bar (Pin · Copy · Save · OCR · More)** appear
-   over the capture, **no sidebar** (SC-001, FR-009/FR-011).
+1. Press *Capture Region*, select a region (the editor **always** opens, Q1) → a **floating
+   horizontal toolbar** + **action bar (Pin · Copy · Save · More)** appear
+   over the capture, **no sidebar** (SC-001, FR-009/FR-011). Selecting then
+   immediately pressing C/S/P is the express path (no separate mode).
 2. Draw a **Rectangle** and an **Arrow** (hold **Shift** → straight; **scroll** →
    thickness) and add **Text** (FR-013/FR-014).
 3. Press **C** → paste into an image app → the image **matches the on-screen
@@ -77,15 +78,15 @@ The app starts **in the tray / menu bar with no window** (SC-005).
    (SC-004, FR-021). Make a new edit mid-undo → the stale redo branch is dropped.
 5. **Clear History** → unannotated capture returns (FR-022).
 
-## US4 — OCR & QR (offline)
+## US4 — QR detection (offline)
 
-1. Capture printed text → **OCR** → extracted text is copyable and matches the
-   source within tolerance (SC-007, FR-027). Empty area → "no text found",
-   no error (Edge Case).
-2. Capture a **QR code** → **Open URL / Copy URL** offer the decoded value
-   (FR-029). Multiple codes → a choice is offered.
-3. **Search/Translate** (if enabled) only open the OS browser by explicit click
-   and are clearly labeled as leaving offline (FR-028) — and never send the image.
+1. Capture a **QR code** → **Copy URL** and (for URLs) **Open URL** offer the
+   correctly decoded value (SC-007, FR-027–FR-029). Multiple codes → a choice is
+   offered; no code → "no code found", no error (Edge Case).
+2. **Open URL** only launches the OS browser on an explicit click and never sends
+   the screenshot; **Copy URL** is a local clipboard action (FR-029).
+3. Confirm with a network monitor that detection makes **zero** network requests.
+   (OCR text extraction is **not** part of this feature — deferred to roadmap.)
 
 ## US5 — visual smart tools
 
@@ -119,7 +120,7 @@ On a HiDPI (2×) display next to a 1× display, on **both** macOS and Windows:
 ## Offline check (mandatory — SC-010 / FR-046)
 
 With a network monitor (Little Snitch / `lsof -i` / Resource Monitor) running,
-perform a full **capture → annotate → OCR → QR → color → copy/save/pin** cycle →
+perform a full **capture → annotate → QR → color → copy/save/pin** cycle →
 **zero** network connections from the app. The **only** permitted outbound call is
 the **explicit** *Check for Updates*, which must be silent unless clicked.
 

@@ -10,8 +10,8 @@ Turn PinShot's capture pipeline (002) and floating pin (003) into the full
 **"float shot"** experience: after a selection is committed, a **floating,
 horizontal, keyboard-first annotation editor** opens over the frozen capture —
 a tool toolbar that expands into **contextual properties**, an infinite
-**undo/redo history**, a **floating action bar** (Pin / Copy / Save / OCR /
-More — **no Share**), **smart tools** (OCR, QR, color picker, spotlight,
+**undo/redo history**, a **floating action bar** (Pin / Copy / Save /
+More — **no Share**), **smart tools** (QR detection, color picker, spotlight,
 magnifier, step numbers, crop), a **background tray / menu-bar app with no main
 window**, and a dedicated **Settings window**.
 
@@ -20,8 +20,7 @@ The architectural crux is **Constitution IV**: the **annotation model**,
 magnifier), **QR decode**, **color math**, **crop**, and **PNG/JPG/WebP encode**
 all live as **pure functions in `pinshot-core`**, unit-tested headless; the
 TypeScript canvas only renders a live preview and forwards intents; the Tauri
-shell owns windows, tray, hotkeys, settings I/O, and the **platform OCR adapter**
-behind a trait. This keeps the privacy guarantee auditable in one place, keeps a
+shell owns windows, tray, hotkeys, and settings I/O. This keeps the privacy guarantee auditable in one place, keeps a
 future Linux port feasible, and lets the riskiest logic (DPI-correct flatten,
 pixel effects) be tested without a GUI.
 
@@ -46,10 +45,10 @@ prioritized slices US1→US6.
   - Fonts: bundle an open-licensed UI font for text annotation rendering, or use
     platform text APIs in the webview for preview and `ab_glyph`/`rusttype` in
     core for flatten — **decision deferred to Phase 0 D5**.
-- **OCR** is **not** a crate: macOS **Apple Vision** via FFI/`objc2`; Windows
-  **`Windows.Media.Ocr`** via the `windows` crate — both OS-provided, offline.
 - **No new network-capable dependency.** Every addition is verified against
   Principle I (no network) and license compatibility before adoption.
+- **OCR is NOT part of this feature** (deferred to roadmap v0.3); no OCR engine,
+  FFI, or `windows`/Vision dependency is introduced here.
 
 **Storage**: One local, human-readable **settings file** (`Settings.toml`) in the
 OS config dir (`dirs::config_dir()/PinShot/`); in-memory `EditSession`,
@@ -58,9 +57,8 @@ folder. No database, no remote storage.
 
 **Testing**: `cargo test -p pinshot-core` for the annotation model, flatten,
 pixel effects, QR decode, color conversions, crop, encode, naming, and settings
-schema — all **headless**. Shell adapters (OCR, clipboard, windows) are covered
-by manual `quickstart.md` scenarios on both OSes; OCR has a thin trait so core
-logic around it stays testable with a fake engine.
+schema — all **headless**. Shell adapters (clipboard, windows, capture) are
+covered by manual `quickstart.md` scenarios on both OSes.
 
 **Target Platform**: macOS and Windows desktop (Tauri); extends the 001 Cargo
 workspace + Vite frontend.
@@ -85,11 +83,11 @@ to hundreds of annotations; 1–N pins; 1–4 displays.
 
 | Principle | Gate | Status |
 |---|---|---|
-| I. Privacy-First & Offline-Only | Capture, annotate, flatten, OCR (Vision/Windows OCR), QR (offline `rqrr`), color, crop, encode, clipboard, file, and pin are **all local**. No new network-capable dependency. Update check stays isolated/opt-in/off. Search/Translate are explicit OS hand-offs, never core requests (FR-028). **No Share** anywhere (FR-047). | ✅ PASS |
+| I. Privacy-First & Offline-Only | Capture, annotate, flatten, QR (offline `rqrr`), color, crop, encode, clipboard, file, and pin are **all local**. No new network-capable dependency. Update check stays isolated/opt-in/off. QR **Open URL** is an explicit OS-browser hand-off, never a core request (FR-029). **No Share** anywhere (FR-047). **OCR is deferred** (not shipped here). | ✅ PASS |
 | II. Performance Is a Feature | Editor opens over the already-frozen 002 frame (no recapture); flatten/encode run in core off the UI thread; smart tools operate on the held RGBA. Budgets in NFR-001…007 are release gates measured in `quickstart.md`. | ✅ PASS |
-| III. Cross-Platform Parity | Identical editor/tools/shell on both OSes; mixed-DPI flatten/effect/pin is a mandatory test (SC-002). The only platform-divergent piece — OCR — sits behind one trait with two `#[cfg]` adapters. | ✅ PASS |
-| IV. Clean Architecture: Core as a Library | Annotation model, flatten, pixel effects, QR, color, crop, encode, settings schema = pure `pinshot-core`. Shell owns windows/tray/hotkeys/IPC/OCR-adapter/clipboard/files. UI renders + forwards intents only. New feature defines the core API surface first, then shell/UI. | ✅ PASS |
-| V. Strict Scope & Simplicity | Scope = the floating editor + smart tools + shell + settings, sliced US1→US6 in roadmap order (annotation → shell → OCR/QR → polish → advanced pin). No accounts, sync, telemetry, screen recording, or online AI. New deps are each the documented vetted choice or the simplest local option; justified below. | ✅ PASS |
+| III. Cross-Platform Parity | Identical editor/tools/shell on both OSes; mixed-DPI flatten/effect/pin is a mandatory test (SC-002). With OCR deferred, there is **no** platform-divergent recognition path in this feature; capture stays behind the existing 002 trait. | ✅ PASS |
+| IV. Clean Architecture: Core as a Library | Annotation model, flatten, pixel effects, QR, color, crop, encode, settings schema = pure `pinshot-core`. Shell owns windows/tray/hotkeys/IPC/clipboard/files. UI renders + forwards intents only. New feature defines the core API surface first, then shell/UI. | ✅ PASS |
+| V. Strict Scope & Simplicity | Scope = the floating editor + smart tools + shell + settings, sliced US1→US6 in roadmap order (annotation → shell → QR → polish → advanced pin); **OCR explicitly cut** to respect roadmap order (OCR is v0.3). No accounts, sync, telemetry, screen recording, or online AI. New deps are each the documented vetted choice or the simplest local option; justified below. | ✅ PASS |
 | VI. Maintainability & Contributor Experience | Same toolchain/commands as 001–003; new core modules get doc comments and carry the heaviest unit tests (flatten/effects/QR/DPI math are the risk). Each new crate/module has one responsibility; IPC additions documented in `contracts/`. | ✅ PASS |
 
 **No violations.** Complexity Tracking notes the few judgment calls (see
@@ -107,7 +105,7 @@ specs/004-floating-annotation-editor/
 ├── data-model.md           # Phase 1: entities, annotation model, state machines
 ├── contracts/
 │   ├── editor-ipc.md       # UI ↔ shell: editor lifecycle, annotations, output
-│   ├── smart-tools-ipc.md  # UI ↔ shell: OCR, QR, color, crop
+│   ├── smart-tools-ipc.md  # UI ↔ shell: QR, color, crop
 │   └── app-shell-ipc.md    # UI ↔ shell: tray, settings, hotkeys
 ├── quickstart.md           # Phase 1: validation incl. offline, mixed-DPI, perf
 ├── checklists/
@@ -135,10 +133,9 @@ crates/pinshot-core/src/
 │   ├── text.rs          #   text layout + rasterize for flatten
 │   └── step.rs          #   step-number sequencing/renumber
 ├── history.rs           # NEW: HistoryStack (undo/redo command log) — pure
-├── smart/               # NEW: offline smart tools (pure, OCR behind a trait)
-│   ├── mod.rs           #   SmartResult, OcrResult, QrResult, ColorSample
-│   ├── qr.rs            #   QR/barcode decode via rqrr (offline)
-│   └── ocr.rs           #   OcrEngine trait + types (impls live in the shell)
+├── smart/               # NEW: offline smart tools (pure)
+│   ├── mod.rs           #   SmartResult, QrResult, ColorSample
+│   └── qr.rs            #   QR/barcode decode via rqrr (offline)
 ├── settings.rs          # NEW: Settings schema + serde + defaults + validation
 └── lib.rs               # re-exports for all the above
 
@@ -155,10 +152,7 @@ src-tauri/src/
 │   ├── window.rs        #   create the floating editor webview(s)
 │   └── export.rs        #   flatten via core → clipboard/file/pin
 ├── smart/               # NEW: shell side of smart tools
-│   ├── mod.rs           #   IPC commands: run_ocr / detect_qr / pick_color / crop
-│   └── ocr/             #   OcrEngine impls behind the core trait
-│       ├── macos.rs     #     Apple Vision (objc2)  [cfg(target_os="macos")]
-│       └── windows.rs   #     Windows.Media.Ocr     [cfg(target_os="windows")]
+│   └── mod.rs           #   IPC commands: detect_qr / pick_color / crop / open_external
 ├── settings/            # NEW: shell side of settings
 │   ├── mod.rs           #   load/save Settings.toml; apply (theme/launch/hotkeys)
 │   └── hotkeys.rs       #   register/remap global hotkeys + conflict detection
@@ -178,17 +172,17 @@ ui/
     │   ├── toolbar.ts   #   FloatingToolbar + ContextualProperties
     │   ├── canvas.ts    #   Canvas render + live draw + hit-test preview
     │   ├── history.ts   #   HistoryPanel view
-    │   ├── actionbar.ts #   Pin/Copy/Save/OCR/More (no Share)
-    │   └── smart.ts     #   OCR/QR/Color/Crop result surfaces
+    │   ├── actionbar.ts #   Pin/Copy/Save/More (no Share)
+    │   └── smart.ts     #   QR/Color/Crop result surfaces
     └── settings.ts      # NEW: Settings UI (tabs, hotkey recorder)
 ```
 
 **Structure Decision**: Extend the existing workspace in place. All pure logic
 concentrates under two new `pinshot-core` areas — `annotation/` (the engine) and
-`smart/` (OCR trait + offline QR) — plus `history.rs` and `settings.rs`, so the
+`smart/` (offline QR + color) — plus `history.rs` and `settings.rs`, so the
 DPI-correct flatten, pixel effects, QR, and undo logic that drive SC-002/SC-004/
 SC-007/SC-008 are unit-tested headless. All side effects (editor/settings/pin
-windows, tray, hotkeys, clipboard, files, OCR FFI) live in `src-tauri/src/`
+windows, tray, hotkeys, clipboard, files) live in `src-tauri/src/`
 behind the core's ports. The editor and settings are new Vite entries
 (`editor.html`, `settings.html`) shipping in the same bundle, mirroring how
 `overlay.html` (002) and `pin.html` (003) were added.
@@ -205,28 +199,28 @@ behind the core's ports. The editor and settings are new Vite entries
                 │ contracts/{editor,smart-tools,app-shell}-ipc.md
 ┌───────────────┴───────────────────────────────────────────▼──────────┐
 │ Tauri shell (src-tauri)  — windows, tray, hotkeys, IPC, platform I/O   │
-│   editor/ · smart/ (incl. ocr/{macos,windows}) · settings/ · tray ·    │
+│   editor/ · smart/ · settings/ · tray ·                               │
 │   capture/ (reused) · pin (reused/extended)                            │
 └───────────────▲───────────────────────────────────────────┬──────────┘
-                │ calls pure core APIs        implements ports│ (ScreenCapturer,
-                │                                              │  OcrEngine)
+                │ calls pure core APIs        implements ports│ (ScreenCapturer
+                │                                              │  from 002)
 ┌───────────────┴───────────────────────────────────────────▼──────────┐
 │ pinshot-core (headless, no GUI, NO NETWORK)                            │
 │   annotation/ (model · render/flatten · effects · text · step) ·       │
-│   history · smart/ (qr · ocr trait · color) · settings schema ·        │
+│   history · smart/ (qr · color) · settings schema ·                    │
 │   crop · encode (png/jpg/webp) · geometry · selection · pin math       │
 └───────────────▲───────────────────────────────────────────┬──────────┘
                 │ trait impls (#[cfg])                        │
 ┌───────────────┴───────────────────────────────────────────▼──────────┐
 │ Platform adapters (in shell, behind core traits)                       │
-│   xcap capture · Apple Vision OCR (macOS) · Windows.Media.Ocr (Win) ·  │
-│   arboard clipboard · Tauri windows                                    │
+│   xcap capture (002) · arboard clipboard · Tauri windows               │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-**The dependency rule holds**: inner layers never import outer ones. `OcrEngine`
-is the one platform-divergent port; the UI imports neither core nor adapters —
-it speaks only the documented IPC surface.
+**The dependency rule holds**: inner layers never import outer ones. With OCR
+deferred, `ScreenCapturer` (from 002) is the only platform port this feature
+relies on; the UI imports neither core nor adapters — it speaks only the
+documented IPC surface.
 
 ## Annotation Engine Design *(deliverable 9)*
 
@@ -273,11 +267,12 @@ Reuse 002 wholesale; this feature only changes the **handoff target**.
 - **Trigger → freeze → overlay → select/adjust** is unchanged (002 + 003). At
   trigger, all monitors are frozen once into RGBA `FrozenFrame`s; overlay windows
   (pre-created, hidden at startup) show instantly (< 100 ms, NFR-002).
-- **New handoff**: on **Edit commit**, instead of going straight to clipboard/
-  file (002) or a pin (003), the shell crops the frozen region via
-  `crop_region` (reused, DPI-exact) into a `CaptureImage` and opens the **editor
-  window** seeded with that image as the `AnnotationDoc.base`. The express path
-  (direct Copy/Save/Pin without editing) remains.
+- **New handoff (Q1 — editor always opens)**: on **commit**, instead of going
+  straight to clipboard/file (002) or a pin (003), the shell crops the frozen
+  region via `crop_region` (reused, DPI-exact) into a `CaptureImage` and **always**
+  opens the **editor window** seeded with that image as the `AnnotationDoc.base`.
+  There is no separate "express" mode — the in-editor Copy/Save/Pin shortcuts fire
+  instantly, so selecting then immediately pressing C/S/P is the fast path.
 - **Capture modes** (FR-040: Region / Window / Full Screen): Region exists (002);
   Window/Full-Screen feed the same `CaptureImage` into the same editor. Delay
   timer, include-cursor, include-shadow are capture-time options applied before
@@ -345,7 +340,7 @@ EditorOpen ──select tool──► ToolActive(props shown)
 ToolActive ──draw──► add Annotation (push history) ──► ToolActive
 ToolActive ──select object──► ObjectSelected(restyle/move/resize/delete)
 any ──Undo/Redo──► history cursor moves (canvas re-renders)
-any ──OCR/QR/Color──► SmartResult shown (non-destructive)
+any ──QR/Color──► SmartResult shown (non-destructive)
 any ──Crop commit──► base reframed (push history)
 EditorOpen ──Copy/Save/Pin──► flatten(core) → Output ──► close editor
 EditorOpen ──Esc──► discard ──► TrayIdle (clipboard/FS unchanged)
@@ -369,21 +364,22 @@ User        Shell(tray/hotkey)     Overlay(UI)     core            Editor(UI)
  │             │ close editor ─────────────────────────────►│          
 ```
 
-**B. OCR (US4):**
+**B. QR detection (US4) — fully offline, in core:**
 ```
-User    Editor(UI)        Shell(smart)        OcrEngine(adapter)   core
- │ OCR ──►│ run_ocr(captureId)──►│ ocr.recognize(rgba)──►│ (Vision/WinOCR, offline)
- │        │◄──────── OcrResult{text,regions} ◄───────────│
- │ Copy Text ──►│ (clipboard text)  — no network at any step
+User    Editor(UI)        Shell(smart)        core
+ │ (edit)─►│ detect_qr(sessionId)──►│ qr::detect(rgba)──►│ (rqrr, offline)
+ │        │◄──────── QrResult{codes[value,isUrl]} ◄──────│
+ │ Copy URL ──►│ (clipboard text)            — no network at any step
+ │ Open URL ──►│ open_external(url)  — explicit OS-browser hand-off (FR-029)
 ```
 
-**C. Pin with later annotation (US6):**
+**C. Pin with later annotation (US6) — Q4: pin keeps the live doc:**
 ```
 User   Editor   Shell(pin)        core            Pin(UI)
- │ P ──►│ create_pin(flatten or live doc)──►│ pin size/placement
+ │ P ──►│ create_pin(keeps live AnnotationDoc)──►│ pin size/placement
  │      │ open pin window ─────────────────────────────►│ render
  │ annotate on pin ─────────────────────────────────────│ add Annotation
- │ copy from pin ──► flatten(pin.doc) ─► clipboard (local)
+ │ copy from pin ──► flatten(pin.doc) ─► clipboard (local; flatten only here)
 ```
 
 ## Phase 0 — Research / Key Decisions
@@ -398,11 +394,15 @@ User   Editor   Shell(pin)        core            Pin(UI)
 - **D2 — Editor is a Tauri webview window over the capture.** One editor window
   per capture session, borderless, seeded via IPC. Reuses the 002/003 window
   pattern; simplest model with native feel.
-- **D3 — OCR behind a single `OcrEngine` trait in core.** Two `#[cfg]` adapters
-  in the shell (Apple Vision via `objc2`; `Windows.Media.Ocr` via `windows`).
-  Keeps Principle III/IV; core logic uses a fake engine in tests.
+- **D3 — OCR is out of scope (clarified).** Text extraction (OCR) and any
+  Search/Translate are **deferred to roadmap v0.3** and not built here. This
+  removes the only platform-divergent recognition path from this feature; if/when
+  OCR returns it lands behind a single `OcrEngine` trait in core with two
+  `#[cfg]` adapters (Apple Vision / `Windows.Media.Ocr`).
 - **D4 — QR decode in core with `rqrr` (offline).** Pure Rust, MIT/Apache,
   no network. `bardecoder` is the fallback if multi-format barcodes are needed.
+  QR **Open URL** is an explicit OS-browser hand-off (`open_external`), never a
+  core request (FR-029).
 - **D5 — Text flatten font.** Bundle one open-licensed font (e.g., Inter/DejaVu)
   and rasterize with `ab_glyph` in core for cross-platform-identical text output;
   preview uses the webview's native text. (Confirm license + size in tasks.)
@@ -416,23 +416,29 @@ User   Editor   Shell(pin)        core            Pin(UI)
   (not webview) for startup speed and native feel (NFR-001/005).
 - **D9 — Reuse 002 frozen frame + `crop_region` for capture, editing base, the
   Crop tool, and color reads.** No recapture; everything operates on held RGBA.
-- **D10 — Search/Translate are OS hand-offs, default-hidden where networked.**
-  Core never calls out; "Open URL"/"Search" use the OS opener by explicit user
-  action (FR-028). Online translate is deferred; offline translate is a later
-  roadmap item.
+- **D10 — QR Open URL is an OS hand-off (no Search/Translate).** Core never calls
+  out; **Open URL** uses the OS opener by explicit user action (FR-029). Web
+  Search and online Translate on text are **not** part of this feature (they were
+  tied to OCR, now deferred).
+- **D11 — Pin keeps the live annotation doc (Q4).** `create_pin` stores the
+  editable `AnnotationDoc` on the pin; pixels are flattened only on copy/save, so
+  annotate-after-pin (US6) is the same model, not a separate overlay.
+- **D12 — Crop is non-destructive (Q5).** `crop_base` reframes and keeps all
+  annotations; items outside the new frame are clipped on export, not deleted, and
+  the crop is reversible via the `Crop` history command.
 
 ## Phase 1 — Data Model & Contracts (pointers)
 
 - **Data model** → [data-model.md](./data-model.md): `EditSession`,
   `AnnotationDoc`, `Annotation`/`AnnotationKind`, `Style`, `ToolProperties`,
-  `HistoryStack`/`Command`, `SmartResult` (`OcrResult`/`QrResult`/`ColorSample`),
+  `HistoryStack`/`Command`, `SmartResult` (`QrResult`/`ColorSample`),
   `Settings`, `Hotkey`, `ExportProfile`, extended `Pin`; plus the app + editor
   state machines.
 - **Contracts**:
   - [contracts/editor-ipc.md](./contracts/editor-ipc.md) — open/close editor,
     add/update/delete annotation, undo/redo, flatten→copy/save/pin.
-  - [contracts/smart-tools-ipc.md](./contracts/smart-tools-ipc.md) — run_ocr,
-    detect_qr, pick_color, crop.
+  - [contracts/smart-tools-ipc.md](./contracts/smart-tools-ipc.md) — detect_qr,
+    pick_color, crop, open_external.
   - [contracts/app-shell-ipc.md](./contracts/app-shell-ipc.md) — tray actions,
     settings get/set, hotkey record/register + conflict.
 
@@ -445,5 +451,4 @@ not added complexity):
 |---|---|---|
 | Preview in webview, **flatten in core** (D1) | Only way to get both 60 fps and tested DPI-exact offline output | All-core render (too slow) / trust-webview pixels (not testable, DPI-fragile) |
 | New `pinshot-core` sub-modules `annotation/`, `smart/` | One responsibility each; keeps the heaviest logic headless-tested | Putting flatten/effects/QR in the shell (un-testable, violates IV) |
-| One `OcrEngine` trait, two `#[cfg]` adapters (D3) | Isolates the single platform-divergent path | Scattering `#[cfg]` through business logic |
 | Adding `rqrr` + `serde`/`toml` (+ maybe a kernel/font crate) | Each is local-only, license-compatible, and the simplest offline option | Hand-rolling QR/blur/serialization |

@@ -6,7 +6,7 @@ These are mostly in-memory domain types. The only persisted entity is
 [Settings](#settings) (a local `Settings.toml`); outputs are PNG/JPG/WebP files.
 Types that carry geometry / pixel / encoding / schema logic live in
 `pinshot-core` (headless, unit-tested); the shell owns windows, tray, hotkeys,
-clipboard, files, and the OCR adapter. Coordinates that cross IPC are **logical**
+clipboard, files, and the platform capture adapter. Coordinates that cross IPC are **logical**
 (CSS) px; physical/DPI math stays in core/shell (reusing 002/003).
 
 ## Entity Map
@@ -18,7 +18,7 @@ EditSession 1───1 AnnotationDoc 1───* Annotation ──has──► 
      │
      ├──1───1 HistoryStack 1───* Command
      ├──1───1 ToolProperties (per-kind defaults)
-     └──produces──► SmartResult { OcrResult | QrResult | ColorSample }
+     └──produces──► SmartResult { QrResult | ColorSample }
 
 Settings 1───* Hotkey         Settings 1───1 ExportProfile
 PinRegistry 1───* Pin (extends 003) ──may own──► AnnotationDoc
@@ -100,23 +100,21 @@ A reversible edit (the unit of undo/redo).
 - Variants: `AddAnnotation(Annotation)`, `RemoveAnnotation(id, snapshot)`,
   `MutateAnnotation(id, before: Style|Geometry, after)`, `Reorder(id, from, to)`,
   `Crop(before_base_ref, after_rect)`, `Renumber(before, after)`.
+- `Crop` is **non-destructive** (Q5): it reframes the base and keeps all
+  annotations; items outside the new frame are clipped on export, not deleted,
+  and `invert` restores the previous frame.
 - Each variant defines `apply` and `invert` on the `AnnotationDoc`.
 
 ### SmartResult
 Non-destructive output of a smart tool (US4/US5); not part of the doc.
-- `OcrResult { text: String, lines: Vec<OcrLine{ text, rect }> , language: Option<String> }`
 - `QrResult { codes: Vec<QrCode{ value: String, rect: Rect, is_url: bool }> }`
 - `ColorSample { rgb: (u8,u8,u8), hex: String, hsl: (u16,u8,u8) }`
-- All produced offline; `OcrResult` from the shell `OcrEngine` adapter, the rest
-  pure in core.
+- Both produced **offline & pure in core** (QR via `rqrr`, color via `color`);
+  no platform engine, no network.
 
-### OcrEngine *(port/trait in core; impls in shell)*
-```
-trait OcrEngine { fn recognize(&self, img: &CaptureImage, langs: &[Lang])
-                    -> Result<OcrResult, OcrError>; }
-```
-- macOS adapter: Apple Vision (`objc2`); Windows adapter: `Windows.Media.Ocr`.
-- A `FakeOcrEngine` enables headless tests of OCR-consuming logic.
+> **OCR is out of scope for this feature** (deferred to roadmap v0.3). The
+> `OcrEngine` trait, `OcrResult`, and the Vision/Windows-OCR adapters are
+> intentionally **not** part of this data model.
 
 ### Settings *(persisted — the only stored entity)*
 Local `Settings.toml`; schema + defaults + validation in `core::settings`.
@@ -134,7 +132,7 @@ Local `Settings.toml`; schema + defaults + validation in `core::settings`.
 
 ### Hotkey
 - `action: ActionId` (e.g., `CaptureRegion`, `CaptureWindow`, `CaptureFullScreen`,
-  `Pin`, `Ocr`, `ToggleAllPins`, plus editor tool/action ids).
+  `Pin`, `ToggleAllPins`, plus editor tool/action ids).
 - `chord: KeyChord { mods, key }`.
 - `scope: Scope{ Global | Editor }`.
 - `conflict: Option<ConflictKind>` — set by the recorder when the chord clashes
@@ -152,8 +150,9 @@ Used by Copy/Save (FR-043).
 Floating image window state (shell registry).
 - `id, png, width, height, scale_factor, display_origin` (003) **plus**
   `opacity: f32=1.0`, `click_through: bool=false`, `scale: f32=1.0`,
-  `doc: Option<AnnotationDoc>` (annotate-after-pin, US6/FR-038).
-- Copy/Save from a pin flattens `doc` (if any) over its image.
+  `doc: AnnotationDoc` (Q4 — a pin **always** carries an editable annotation
+  document, possibly empty; annotate-after-pin is US6/FR-038).
+- Copy/Save from a pin flattens `doc` over its image (flatten happens only here).
 
 ---
 
@@ -200,8 +199,8 @@ EditorOpen(base loaded)
   │     └─ delete/Eraser ► RemoveAnnotation                                   (FR-013)
   ├─ Undo/Redo ───────► history cursor ∓1; canvas re-render                  (FR-021)
   ├─ Clear History ───► history.clear(); base only                          (FR-022)
-  ├─ OCR/QR/Color ────► SmartResult shown (non-destructive)                 (FR-027-030)
-  ├─ Crop commit ─────► reframe base; reposition/clip items; history.push   (FR-034)
+  ├─ QR/Color ────────► SmartResult shown (non-destructive)                 (FR-027-030)
+  ├─ Crop commit ─────► reframe base; keep+clip items (non-destructive); history.push (FR-034)
   ├─ Copy/Save/Pin ───► flatten(core) → Output; close editor                (FR-023-025)
   └─ Esc ─────────────► discard; TrayIdle (clipboard/FS unchanged)          (FR-012)
 ```
@@ -230,11 +229,10 @@ Pure, no I/O, unit-tested headless (FR-048):
 - `annotation::step::{next_index, renumber}`.
 - `history::{HistoryStack, Command}` with `apply`/`invert`.
 - `smart::qr::detect(&CaptureImage) -> QrResult` (offline, `rqrr`).
-- `smart::ocr::{OcrEngine, OcrResult, OcrError, Lang}` (trait + types; impls in shell).
 - `color::{rgb_to_hsl, hsl_to_rgb, format_rgb, format_hsl}` (extends existing `pixel_hex`/`pixel_rgb`).
 - `encode::{to_png, to_jpg, to_webp}` (extends existing `to_png`).
 - `naming::output_filename(pattern, now, existing)` (extends existing).
 - `settings::{Settings, Theme, Lang, CaptureMode, ExportProfile, Hotkey, defaults, validate, from_toml, to_toml}`.
 
-The shell provides `ScreenCapturer` (xcap, 002) and `OcrEngine` (Vision/Windows
-OCR) implementations and performs all clipboard/file/window/tray side effects.
+The shell provides the `ScreenCapturer` (xcap, 002) implementation and performs
+all clipboard/file/window/tray side effects. (No OCR engine ships in this feature.)

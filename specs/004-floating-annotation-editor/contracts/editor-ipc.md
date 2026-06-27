@@ -93,7 +93,9 @@ Resync the UI from the authoritative doc (after a revision mismatch).
 ### `crop_base`
 Re-frame the capture (Crop tool, FR-034).
 - **Args**: `{ sessionId, rect, aspect: "free"|"1:1"|"16:9"|"4:3" }`
-- **Effect**: reframe `base` (reuse `crop_region`), reposition/clip items, push `Crop`.
+- **Effect**: reframe `base` (reuse `crop_region`) and **keep all items** (Q5);
+  items outside the new frame are clipped on export, not deleted; push a
+  reversible `Crop` command.
 - **Returns**: `{ ok: true, revision, width, height }`
 
 ### `export`
@@ -103,8 +105,9 @@ Copy / Save / Pin.
 - **Effect**: `annotation::render::flatten(doc)` → `encode` → target:
   - `clipboard` → `arboard` image (reuse 002 `output::copy_image`).
   - `file` → write via `ExportProfile` (format/pattern/compression).
-  - `pin` → create a pin (reuse 003 `create_pin`) from the flattened image; if
-    US6 live-annotate is enabled, attach the doc instead of pre-flattening.
+  - `pin` → create a pin (reuse 003 `create_pin`) carrying the **editable
+    annotation document** (Q4); the pin is **not** pre-flattened — its pixels are
+    flattened only when copied/saved, so annotate-after-pin (US6) works natively.
 - **Returns**:
   ```jsonc
   { "ok": true, "target": "file", "path": "/…/PinShot_2026-06-27_17-40-02.png" }

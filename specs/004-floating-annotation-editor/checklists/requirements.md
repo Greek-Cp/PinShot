@@ -21,11 +21,11 @@
 - [x] All acceptance scenarios are defined (per user story US1–US6)
 - [x] Edge cases are identified (mixed-DPI, undo branch, lossless blur, click-through trap, corrupt settings, etc.)
 - [x] Scope is clearly bounded and sliced into independently-shippable priorities
-- [x] Dependencies and assumptions identified (builds on 002 + 003; OCR engines; offline QR)
+- [x] Dependencies and assumptions identified (builds on 002 + 003; offline QR; OCR explicitly deferred)
 
 ## Constitution Alignment (v1.1.0)
 
-- [x] **I. Privacy/Offline**: FR-046/SC-010 encode zero-network; FR-047 removes Share/upload/cloud; FR-028 confines Search/Translate to explicit OS hand-offs
+- [x] **I. Privacy/Offline**: FR-046/SC-010 encode zero-network; FR-047 removes Share/upload/cloud; FR-029 confines QR Open URL to an explicit OS hand-off (OCR/Search/Translate deferred)
 - [x] **II. Performance**: NFR-001…007 + SC-009 encode startup/capture/60fps/memory budgets
 - [x] **III. Parity**: FR-049/SC-002 mandate macOS+Windows equivalence incl. mixed-DPI
 - [x] **IV. Core as a Library**: FR-048 requires the annotation/flatten/effects/QR/color/encode/settings logic to be headless-testable in `pinshot-core`
@@ -44,6 +44,10 @@
 
 - Items marked incomplete require spec updates before `/speckit.tasks`.
 - Validation performed 2026-06-27; all items pass. See notes below.
+- **Clarification session 2026-06-27** resolved 5 items and is recorded in the
+  spec's `## Clarifications` section: editor always opens (Q1); **OCR removed/
+  deferred** (Q2); QR kept (Q3); pins keep the editable doc (Q4); crop is
+  non-destructive (Q5). All artifacts were updated accordingly and re-validated.
 
 ### Validation Notes
 
@@ -53,20 +57,21 @@
   shareable-URL is **excluded** (FR-047, Non-Goals, SC-010). This is the one
   deliberate divergence from the mockup and is called out explicitly.
 - **Implementation-detail check**: The spec names "macOS"/"Windows", "menu bar"/
-  "system tray", "clipboard/file/pin", and "OCR/QR" as product facts. Specific
-  crates (QR decoder, encoders), the OCR FFI, the preview-vs-flatten split, and
+  "system tray", "clipboard/file/pin", and "QR detection" as product facts. Specific
+  crates (QR decoder, encoders), the preview-vs-flatten split, and
   the exact default hotkeys are deferred to [plan.md](../plan.md) and
   [data-model.md](../data-model.md).
-- **Scope & roadmap**: This spec captures the full Floating Editor vision for
+- **Scope & roadmap**: This spec captures the Floating Editor vision for
   coherence but ships as prioritized, independently-testable slices — US1 (core
   editor + output) is a shippable MVP; US2 (contextual props + history), US3
-  (tray + settings), US4 (OCR/QR), US5 (visual tools), and US6 (advanced pin)
-  layer on top in roadmap order. OCR maps to the public-launch milestone (v0.3);
-  visual tools and advanced pin to polish (v0.5).
+  (tray + settings), US4 (QR detection), US5 (visual tools), and US6 (advanced pin)
+  layer on top in roadmap order. **OCR was cut** from this feature (Clarification
+  Q2) and maps to the public-launch milestone (v0.3); visual tools and advanced
+  pin to polish (v0.5).
 - **Offline integrity**: The only network-capable path is the explicit, opt-in,
   default-off *Check for Updates* (static version file), isolated in
-  [app-shell-ipc.md](../contracts/app-shell-ipc.md). OCR (OS engines), QR
-  (`rqrr`), and color are fully on-device.
+  [app-shell-ipc.md](../contracts/app-shell-ipc.md). QR (`rqrr`) and color are
+  fully on-device; QR **Open URL** is an explicit OS-browser hand-off.
 - **Independent testability**: Each user story has an Independent Test and
   Given/When/Then acceptance scenarios; the headless `pinshot-core` tests cover
   the privacy-/DPI-critical flatten/effects/QR/color logic without a GUI.
