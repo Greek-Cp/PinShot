@@ -19,21 +19,31 @@ are validated manually via quickstart.md (a real desktop session is required).
 
 ## Implementation status (2026-06-27)
 
-**Done & unit-tested headless (`cargo test -p pinshot-core`, 80 tests green;
-fmt + clippy `-D warnings` clean; `cargo build --workspace` green)** — the entire
-pure `pinshot-core` foundation:
+**Done & gated** (`cargo test --workspace` 80 core tests green; `cargo clippy
+--workspace --all-targets -D warnings` clean; `cargo fmt --all --check` clean;
+`npm run build` + `lint` + `format:check` clean) — **24/49 tasks**:
 
-- T001 core deps (`rqrr`, `serde`, `toml`, image `jpeg`); T004–T009 annotation
-  model, edit geometry/hit-test, **flatten** compositing, **history** undo/redo,
-  encode (PNG + JPG; **WebP deferred**, see T008), lib re-exports.
-- Pulled-forward pure-core pieces: T011 text rasteriser (embedded 5×7 font),
-  T021 blur/pixelate, T038 spotlight/magnify + step renumber, T039 HSL/colour,
-  T034 **offline QR decode** (`rqrr`, real round-trip test), T027 settings schema.
+- **Phase 1–2 + pure core** (T001, T004–T009, T011, T021, T027, T034, T038–T039):
+  the headless `pinshot-core` foundation — annotation model, edit geometry/
+  hit-test, **flatten**, blur/pixelate/spotlight/magnify, 5×7 text, history
+  undo/redo, **offline QR**, colour, settings schema, encode (PNG+JPG).
+- **US1 — floating editor end-to-end** (T002–T003, T010, T012–T019): editor opens
+  from the overlay (`edit_selection`, key **E**), shell `EditSession` + IPC
+  (`editor_get_image`/`get_doc`/`add`/`update`/`delete`/`undo`/`redo`/`clear`/
+  `export`/`close`), flatten→**Copy/Save/Pin** (no Share), and the webview —
+  `editor.html` + floating horizontal toolbar (select/rect/ellipse/arrow/line/
+  pencil/highlighter/text + colour/thickness), canvas preview + gestures, action
+  bar, and keyboard shortcuts.
 
-**Remaining (need the Tauri shell + a desktop session to build/validate)**: the
-editor/tray/settings/pin **shell IPC and GUI** — T002–T003, T010, T012–T020,
-T022–T026, T028–T033, T035–T037, T040–T045 — and polish T046–T049. These wire
-the tested core to windows/commands/webviews and are validated via quickstart.md.
+Minor deviations: tool state is UI-side (no server `set_tool`); the base image is
+delivered via a pull command (`editor_get_image`), mirroring pins, rather than a
+push event; **WebP** encode is deferred (T008); editor file-save is PNG for now.
+
+**Remaining (need a desktop session to build/validate or are later slices)**:
+T020 (US1 manual quickstart), US2 contextual-props/history-panel polish
+(T022–T026), US3 tray + Settings UI (T028–T033), US4 QR shell IPC (T035–T037),
+US5 visual-tool wiring (T040–T042), US6 advanced pin (T043–T045), polish
+(T046–T049).
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -47,8 +57,8 @@ the tested core to windows/commands/webviews and are validated via quickstart.md
 ## Phase 1: Setup (Dependencies & Build Wiring)
 
 - [x] T001 [P] Add `rqrr` (offline QR), `serde` (+`derive`), and `toml` to `crates/pinshot-core/Cargo.toml`; keep `image` (already present) for JPG/WebP encode
-- [ ] T002 [P] Add two Vite entries `ui/editor.html` and `ui/settings.html` and register them as inputs in `ui/vite.config.ts` (inputs: `index.html`, `overlay.html`, `pin.html`, `editor.html`, `settings.html`)
-- [ ] T003 [P] In `src-tauri/capabilities/default.json`, add capabilities for the editor window (`editor` label) and the settings window (`settings` label), including `core:window:allow-start-dragging` for the editor toolbar drag
+- [x] T002 [P] Add two Vite entries `ui/editor.html` and `ui/settings.html` and register them as inputs in `ui/vite.config.ts` (inputs: `index.html`, `overlay.html`, `pin.html`, `editor.html`, `settings.html`)
+- [x] T003 [P] In `src-tauri/capabilities/default.json`, add capabilities for the editor window (`editor` label) and the settings window (`settings` label), including `core:window:allow-start-dragging` for the editor toolbar drag
 
 **Checkpoint**: Workspace resolves and builds with new deps (`cargo build --workspace`, `npm --prefix ui run build` emits the new HTML entries).
 
@@ -65,7 +75,7 @@ editor scaffolding every user story builds on; all unit-tested headless.
 - [x] T007 [P] Create `crates/pinshot-core/src/history.rs`: `HistoryStack { commands, cursor }` and `Command` (Add/Remove/Mutate/Reorder/Crop/Renumber) with `apply`/`invert`; `undo`/`redo`/`clear`; a new command while `cursor < len` truncates the stale redo tail; unit tests incl. redo-branch truncation (SC-004)
 - [x] T008 [P] Extend `crates/pinshot-core/src/encode.rs`: add `to_jpg(&CapturedImage, quality)` and `to_webp(&CapturedImage, quality)` alongside `to_png`; unit tests round-trip each format and verify dimensions _(PNG+JPG implemented & tested; WebP deferred — returns `EncodeError::Unsupported` pending a dedicated encoder dependency, plan D6)_
 - [x] T009 Re-export `annotation`, `history`, and the new `encode` items from `crates/pinshot-core/src/lib.rs`
-- [ ] T010 Create the shell editor module skeleton: `src-tauri/src/editor/mod.rs` (the `EditSession { doc, history, tool, props, selected }` state + module decls) and `src-tauri/src/editor/window.rs` (create the borderless floating editor webview); declare `mod editor;` and `manage` the editor state in `src-tauri/src/lib.rs`
+- [x] T010 Create the shell editor module skeleton: `src-tauri/src/editor/mod.rs` (the `EditSession { doc, history, tool, props, selected }` state + module decls) and `src-tauri/src/editor/window.rs` (create the borderless floating editor webview); declare `mod editor;` and `manage` the editor state in `src-tauri/src/lib.rs`
 
 **Checkpoint**: `cargo test -p pinshot-core` passes; shell compiles with the editor skeleton.
 
@@ -83,14 +93,14 @@ matches the on-screen flatten exactly; Save writes a file; Pin floats the result
 Esc cancels with no side effects (quickstart §US1).
 
 - [x] T011 [P] [US1] Create `crates/pinshot-core/src/annotation/text.rs`: `rasterize(&TextStyle, &mut buffer, at)` drawing text (font/size/weight/color/background/shadow) into the RGBA at flatten time; wire it into `render::flatten`; unit test renders a known glyph box (font choice per plan D5)
-- [ ] T012 [US1] In `src-tauri/src/editor/mod.rs`: on **commit** (capture handoff) `crop_region` the frozen selection (reuse 002) into a `CaptureImage`, seed an `EditSession`, and **always** open the editor window (Q1); change `src-tauri/src/capture/mod.rs` `commit_selection` to route to the editor instead of direct output
-- [ ] T013 [US1] Implement the core editor IPC commands in `src-tauri/src/editor/mod.rs` per `contracts/editor-ipc.md`: `set_tool`, `add_annotation`, `update_annotation`, `delete_annotation`, `get_doc`, and `close_editor`; register them in `src-tauri/src/lib.rs`
-- [ ] T014 [US1] Implement `src-tauri/src/editor/export.rs`: `export({target, format})` → `annotation::render::flatten` → clipboard (reuse 002 `output::copy_image`) / file (reuse `encode`+naming) / pin (reuse 003 `create_pin`, **passing the editable doc** per Q4); close the editor on success; wire the `export` command
-- [ ] T015 [US1] Emit `editor://load` to the editor window on open (image data URL/custom-protocol, `width/height/scaleFactor`, seeded `defaults`, `theme`) per `contracts/editor-ipc.md`
-- [ ] T016 [US1] Create `ui/editor.html` + `ui/src/editor/editor.ts`: bootstrap, receive `editor://load`, wire IPC, and install the keyboard map (tool single-keys; C/S/P actions; Esc → `close_editor`)
-- [ ] T017 [US1] Create `ui/src/editor/toolbar.ts`: the **horizontal floating toolbar** (Select/Rect/Ellipse/Arrow/Line/Pencil/Highlighter/Text/…), draggable, keyboard-navigable — **no left/right sidebar** (FR-009)
-- [ ] T018 [US1] Create `ui/src/editor/canvas.ts`: render the base image at logical size; live-draw rect/ellipse/arrow/line/pencil/highlighter/text; **Shift** constrains, **scroll** changes thickness (FR-014); select/move existing objects (hit-test preview); push intents via `add_annotation`/`update_annotation`
-- [ ] T019 [US1] Create `ui/src/editor/actionbar.ts`: the floating action bar **Pin · Copy · Save · More** (FR-011) — **no Share** (FR-047) — calling `export({target})`
+- [x] T012 [US1] In `src-tauri/src/editor/mod.rs`: on **commit** (capture handoff) `crop_region` the frozen selection (reuse 002) into a `CaptureImage`, seed an `EditSession`, and **always** open the editor window (Q1); change `src-tauri/src/capture/mod.rs` `commit_selection` to route to the editor instead of direct output
+- [x] T013 [US1] Implement the core editor IPC commands in `src-tauri/src/editor/mod.rs` per `contracts/editor-ipc.md`: `set_tool`, `add_annotation`, `update_annotation`, `delete_annotation`, `get_doc`, and `close_editor`; register them in `src-tauri/src/lib.rs`
+- [x] T014 [US1] Implement `src-tauri/src/editor/export.rs`: `export({target, format})` → `annotation::render::flatten` → clipboard (reuse 002 `output::copy_image`) / file (reuse `encode`+naming) / pin (reuse 003 `create_pin`, **passing the editable doc** per Q4); close the editor on success; wire the `export` command
+- [x] T015 [US1] Emit `editor://load` to the editor window on open (image data URL/custom-protocol, `width/height/scaleFactor`, seeded `defaults`, `theme`) per `contracts/editor-ipc.md`
+- [x] T016 [US1] Create `ui/editor.html` + `ui/src/editor/editor.ts`: bootstrap, receive `editor://load`, wire IPC, and install the keyboard map (tool single-keys; C/S/P actions; Esc → `close_editor`)
+- [x] T017 [US1] Create `ui/src/editor/toolbar.ts`: the **horizontal floating toolbar** (Select/Rect/Ellipse/Arrow/Line/Pencil/Highlighter/Text/…), draggable, keyboard-navigable — **no left/right sidebar** (FR-009)
+- [x] T018 [US1] Create `ui/src/editor/canvas.ts`: render the base image at logical size; live-draw rect/ellipse/arrow/line/pencil/highlighter/text; **Shift** constrains, **scroll** changes thickness (FR-014); select/move existing objects (hit-test preview); push intents via `add_annotation`/`update_annotation`
+- [x] T019 [US1] Create `ui/src/editor/actionbar.ts`: the floating action bar **Pin · Copy · Save · More** (FR-011) — **no Share** (FR-047) — calling `export({target})`
 - [ ] T020 [US1] Verify: `cargo build --workspace` + `cargo test -p pinshot-core` green; manual quickstart §US1 (editor opens, draw, C/S/P, Esc no-op, no sidebar, no Share)
 
 **Checkpoint**: MVP — capture → floating annotation editor → copy/save/pin works offline on both platforms.

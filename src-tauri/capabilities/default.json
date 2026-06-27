@@ -2,6 +2,6 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Default capability for the PinShot main, overlay, and pin windows.",
-  "windows": ["main", "overlay-*", "pin-*"],
+  "windows": ["main", "overlay-*", "pin-*", "editor", "settings"],
   "permissions": ["core:default", "core:window:allow-start-dragging"]
 }

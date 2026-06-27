@@ -6,9 +6,9 @@
 //! geometry/crop/encode is delegated to `pinshot_core`; this module only wires
 //! platform side effects (capture, windows, clipboard, files).
 
-mod output;
+pub(crate) mod output;
 mod overlay;
-mod pin;
+pub(crate) mod pin;
 // Pixel capture is platform-split: macOS uses the system `screencapture` tool
 // (xcap's CoreGraphics path is broken on macOS 15+), everything else uses xcap.
 #[cfg(target_os = "macos")]
@@ -278,6 +278,43 @@ pub fn commit_selection(
     overlay::close(&app);
     *state.session.lock().expect("session lock") = None;
     Ok(response)
+}
+
+/// Opens the floating annotation editor on the (adjusted) selection (US1, Q1).
+/// Crops the frozen region exactly like `create_pin`/`commit_selection`, seeds
+/// an edit session with that image, opens the editor window, then closes the
+/// overlay. The editor's in-editor Copy/Save/Pin shortcuts are the express path.
+#[tauri::command]
+pub fn edit_selection(
+    app: AppHandle,
+    state: State<'_, CaptureState>,
+    display_id: u32,
+    rect: RectArg,
+) -> Result<(), String> {
+    let (image, scale) = {
+        let guard = state.session.lock().expect("session lock");
+        let session = guard.as_ref().ok_or("no active capture")?;
+        let display = session
+            .displays
+            .iter()
+            .find(|d| d.id == display_id)
+            .ok_or("unknown display")?;
+
+        let logical = Rect::new(rect.x, rect.y, rect.width, rect.height);
+        if logical.is_empty() {
+            return Err("empty_selection".to_string());
+        }
+        let region = to_physical(logical, display);
+        let image =
+            crop_region(&session.frames, &session.displays, region).map_err(|e| e.to_string())?;
+        (image, display.scale_factor)
+    };
+
+    crate::editor::open_session(&app, image, scale).map_err(|e| e.to_string())?;
+
+    overlay::close(&app);
+    *state.session.lock().expect("session lock") = None;
+    Ok(())
 }
 
 /// Copies a color string (HEX) to the clipboard (US3).

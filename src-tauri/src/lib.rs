@@ -6,6 +6,7 @@
 //! (Constitution IV).
 
 mod capture;
+mod editor;
 
 /// Builds and runs the Tauri application.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -14,11 +15,13 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             capture::setup(app.handle())?;
+            editor::setup(app.handle())?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             capture::get_overlay_frame,
             capture::commit_selection,
+            capture::edit_selection,
             capture::copy_color,
             capture::cancel_capture,
             capture::create_pin,
@@ -26,6 +29,16 @@ pub fn run() {
             capture::close_pin,
             capture::raise_pin,
             capture::copy_pin,
+            editor::editor_get_image,
+            editor::editor_get_doc,
+            editor::editor_add,
+            editor::editor_update,
+            editor::editor_delete,
+            editor::editor_undo,
+            editor::editor_redo,
+            editor::editor_clear,
+            editor::editor_export,
+            editor::editor_close,
         ])
         .run(tauri::generate_context!())
         .expect("error while running PinShot");

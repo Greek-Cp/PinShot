@@ -17,12 +17,13 @@ pub mod text;
 
 use crate::capture::CapturedImage;
 use crate::geometry::Rect;
+use serde::{Deserialize, Serialize};
 
 /// Stable identifier for an annotation within an editing session.
 pub type AnnotationId = u64;
 
 /// A point in base-image pixel coordinates.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Point {
     pub x: f32,
     pub y: f32,
@@ -34,8 +35,8 @@ impl Point {
     }
 }
 
-/// An RGBA colour, 8 bits per channel.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// An RGBA colour, 8 bits per channel. Serialises as `[r, g, b, a]`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Rgba(pub u8, pub u8, pub u8, pub u8);
 
 impl Rgba {
@@ -45,7 +46,8 @@ impl Rgba {
 }
 
 /// The shape backing an annotation, in base-image pixel coordinates.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum Geometry {
     /// Axis-aligned box: Rectangle, Ellipse, Blur, Pixelate, Spotlight, Crop region.
     Rect(Rect),
@@ -60,7 +62,8 @@ pub enum Geometry {
 }
 
 /// Arrowhead rendering for [`AnnotationKind::Arrow`]/[`AnnotationKind::Line`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum ArrowHead {
     None,
     Open,
@@ -69,7 +72,8 @@ pub enum ArrowHead {
 }
 
 /// Text-specific style for [`AnnotationKind::Text`].
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
 pub struct TextStyle {
     pub content: String,
     /// Cap height in pixels (the embedded font is scaled to this).
@@ -95,7 +99,8 @@ impl Default for TextStyle {
 
 /// The full (superset) visual style of an annotation. Only the fields relevant
 /// to a [`Annotation::kind`] are honoured by [`render`](crate::annotation::render).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
 pub struct Style {
     pub stroke: Rgba,
     pub stroke_width: u32,
@@ -140,7 +145,8 @@ impl Default for Style {
 
 /// The kind of an annotation object. Drives which [`Geometry`] and [`Style`]
 /// fields apply and how [`render`](crate::annotation::render) draws it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum AnnotationKind {
     Rect,
     Ellipse,
@@ -157,7 +163,8 @@ pub enum AnnotationKind {
 }
 
 /// One editable object on the canvas.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Annotation {
     pub id: AnnotationId,
     pub kind: AnnotationKind,
@@ -196,8 +203,7 @@ impl AnnotationDoc {
     /// Adds an annotation on top of the stack, assigning a fresh id and the
     /// next z-index. Returns the new id.
     pub fn add(&mut self, kind: AnnotationKind, geometry: Geometry, style: Style) -> AnnotationId {
-        let id = self.next_id;
-        self.next_id += 1;
+        let id = self.alloc_id();
         let z = self.items.len() as u32;
         self.items.push(Annotation {
             id,
@@ -207,6 +213,20 @@ impl AnnotationDoc {
             z,
         });
         id
+    }
+
+    /// Allocates a fresh annotation id without inserting anything. Used by the
+    /// history layer, which builds an [`Annotation`] then records an undoable
+    /// `Add` command rather than pushing directly.
+    pub fn alloc_id(&mut self) -> AnnotationId {
+        let id = self.next_id;
+        self.next_id += 1;
+        id
+    }
+
+    /// The z-index a newly added top-of-stack annotation should take.
+    pub fn next_z(&self) -> u32 {
+        self.items.len() as u32
     }
 
     /// Returns a reference to the annotation with `id`, if present.

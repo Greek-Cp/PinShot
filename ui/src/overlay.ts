@@ -487,6 +487,18 @@ async function pinSelection(): Promise<void> {
   }
 }
 
+async function editSelection(): Promise<void> {
+  const r = currentRect();
+  if (r.width < 1 || r.height < 1) {
+    return;
+  }
+  try {
+    await invoke('edit_selection', { displayId, rect: r });
+  } catch (e) {
+    console.error('edit_selection failed', e);
+  }
+}
+
 function selectAll(): void {
   sel = { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight };
   dragging = false;
@@ -581,6 +593,10 @@ function onKeyDown(e: KeyboardEvent): void {
     case 'p':
     case 'P':
       void pinSelection();
+      break;
+    case 'e':
+    case 'E':
+      void editSelection();
       break;
     case 'c':
     case 'C':
