@@ -6,9 +6,10 @@
 //! geometry/crop/encode is delegated to `pinshot_core`; this module only wires
 //! platform side effects (capture, windows, clipboard, files).
 
-mod output;
+pub(crate) mod output;
 mod overlay;
-mod pin;
+pub mod pin;
+mod preview;
 // Pixel capture is platform-split: macOS uses the system `screencapture` tool
 // (xcap's CoreGraphics path is broken on macOS 15+), everything else uses xcap.
 #[cfg(target_os = "macos")]
@@ -24,7 +25,7 @@ use pinshot_core::{
     FrozenFrame, Rect, ScreenCapturer,
 };
 
-use pin::{PinRegistry, PinnedImage};
+pub use pin::{PinRegistry, PinnedImage};
 use serde::{Deserialize, Serialize};
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
@@ -280,6 +281,96 @@ pub fn commit_selection(
     Ok(response)
 }
 
+/// Opens the floating annotation editor on the (adjusted) selection (US1, Q1).
+/// Crops the frozen region exactly like `create_pin`/`commit_selection`, seeds
+/// an edit session with that image, opens the editor window, then closes the
+/// overlay. The editor's in-editor Copy/Save/Pin shortcuts are the express path.
+#[tauri::command]
+pub fn edit_selection(
+    app: AppHandle,
+    state: State<'_, CaptureState>,
+    display_id: u32,
+    rect: RectArg,
+) -> Result<(), String> {
+    let (image, scale) = {
+        let guard = state.session.lock().expect("session lock");
+        let session = guard.as_ref().ok_or("no active capture")?;
+        let display = session
+            .displays
+            .iter()
+            .find(|d| d.id == display_id)
+            .ok_or("unknown display")?;
+
+        let logical = Rect::new(rect.x, rect.y, rect.width, rect.height);
+        if logical.is_empty() {
+            return Err("empty_selection".to_string());
+        }
+        let region = to_physical(logical, display);
+        let image =
+            crop_region(&session.frames, &session.displays, region).map_err(|e| e.to_string())?;
+        (image, display.scale_factor)
+    };
+
+    crate::editor::open_session(&app, image, scale).map_err(|e| e.to_string())?;
+
+    overlay::close(&app);
+    *state.session.lock().expect("session lock") = None;
+    Ok(())
+}
+
+/// Decodes a base64 PNG (optionally a `data:image/png;base64,…` URL) into a
+/// `CapturedImage`. Used by the inline-annotation output path, where the overlay
+/// composites the selection + annotations client-side and hands back a PNG.
+fn decode_png(png: &str) -> Result<CapturedImage, String> {
+    // Accept either a raw base64 string or a full data URL.
+    let b64 = png.rsplit(',').next().unwrap_or(png).trim();
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(b64)
+        .map_err(|e| format!("bad image data: {e}"))?;
+    let rgba = image::load_from_memory(&bytes)
+        .map_err(|e| format!("could not decode image: {e}"))?
+        .to_rgba8();
+    Ok(CapturedImage {
+        width: rgba.width(),
+        height: rgba.height(),
+        rgba: rgba.into_raw(),
+    })
+}
+
+/// Like `commit_selection`, but the image is a pre-composited (annotated) PNG
+/// produced by the overlay instead of a server-side crop of the frozen frame.
+#[tauri::command]
+pub fn commit_annotated(
+    app: AppHandle,
+    state: State<'_, CaptureState>,
+    output: String,
+    png: String,
+) -> Result<CommitResponse, String> {
+    let image = decode_png(&png)?;
+
+    let response = match output.as_str() {
+        "clipboard" => {
+            output::copy_image(&image).map_err(|e| e.to_string())?;
+            CommitResponse {
+                output: "clipboard".to_string(),
+                path: None,
+            }
+        }
+        "file" => {
+            let path = output::save_png(&image).map_err(|e| e.to_string())?;
+            CommitResponse {
+                output: "file".to_string(),
+                path: Some(path.to_string_lossy().into_owned()),
+            }
+        }
+        other => return Err(format!("unknown output target: {other}")),
+    };
+
+    overlay::close(&app);
+    *state.session.lock().expect("session lock") = None;
+    Ok(response)
+}
+
 /// Copies a color string (HEX) to the clipboard (US3).
 #[tauri::command]
 pub fn copy_color(hex: String) -> Result<(), String> {
@@ -367,6 +458,55 @@ pub fn create_pin(
     Ok(CreatePinResponse { pin_id })
 }
 
+/// Like `create_pin`, but the pin content is a pre-composited (annotated) PNG
+/// from the overlay. Placement still derives from the selection rect + display.
+#[tauri::command]
+pub fn pin_annotated(
+    app: AppHandle,
+    state: State<'_, CaptureState>,
+    pins: State<'_, PinRegistry>,
+    display_id: u32,
+    rect: RectArg,
+    png: String,
+) -> Result<CreatePinResponse, String> {
+    let image = decode_png(&png)?;
+
+    let (region, origin, size, scale) = {
+        let guard = state.session.lock().expect("session lock");
+        let session = guard.as_ref().ok_or("no active capture")?;
+        let display = session
+            .displays
+            .iter()
+            .find(|d| d.id == display_id)
+            .ok_or("unknown display")?;
+
+        let logical = Rect::new(rect.x, rect.y, rect.width, rect.height);
+        if logical.is_empty() {
+            return Err("empty_selection".to_string());
+        }
+        let region = to_physical(logical, display);
+        (region, display.origin, display.size, display.scale_factor)
+    };
+
+    let work = Rect::new(
+        (origin.0 as f64 / scale).round() as i32,
+        (origin.1 as f64 / scale).round() as i32,
+        (size.0 as f64 / scale).round() as u32,
+        (size.1 as f64 / scale).round() as u32,
+    );
+    let placement = pin_placement(region, origin, scale, work);
+
+    let pin_id = pins.register(PinnedImage {
+        image,
+        scale_factor: scale,
+    });
+    pin::open_window(&app, pin_id, placement).map_err(|e| e.to_string())?;
+
+    overlay::close(&app);
+    *state.session.lock().expect("session lock") = None;
+    Ok(CreatePinResponse { pin_id })
+}
+
 /// Returns a pin's image (as a PNG data URL) and size for its window.
 #[tauri::command]
 pub fn get_pin_image(pins: State<'_, PinRegistry>, pin_id: u32) -> Result<PinImagePayload, String> {
@@ -402,4 +542,64 @@ pub fn raise_pin(app: AppHandle, pin_id: u32) {
 pub fn copy_pin(pins: State<'_, PinRegistry>, pin_id: u32) -> Result<(), String> {
     let (image, _scale) = pins.snapshot(pin_id).ok_or("unknown pin")?;
     output::copy_image(&image).map_err(|e| e.to_string())
+}
+
+/// Saves a pin's image to `Documents/PinShots/` and pops the save preview toast.
+/// Returns the written path (also used by the toast's actions).
+#[tauri::command]
+pub fn save_pin(
+    app: AppHandle,
+    pins: State<'_, PinRegistry>,
+    pin_id: u32,
+) -> Result<String, String> {
+    let (image, _scale) = pins.snapshot(pin_id).ok_or("unknown pin")?;
+    let path = output::save_to_documents(&image).map_err(|e| e.to_string())?;
+    let path_str = path.to_string_lossy().into_owned();
+    if let Err(e) = preview::open(&app, &path_str) {
+        eprintln!("PinShot: could not open save preview: {e}");
+    }
+    Ok(path_str)
+}
+
+/// Reads a saved image file and returns it as a PNG data URL (for the preview).
+#[tauri::command]
+pub fn read_image(path: String) -> Result<String, String> {
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+    Ok(format!(
+        "data:image/png;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(&bytes)
+    ))
+}
+
+/// Reveals a saved file in Finder/Explorer (preview "Show in Finder").
+#[tauri::command]
+pub fn reveal_in_finder(path: String) -> Result<(), String> {
+    crate::external::reveal(&path)
+}
+
+/// Copies a filesystem path to the clipboard (preview "Copy Path").
+#[tauri::command]
+pub fn copy_path(path: String) -> Result<(), String> {
+    output::copy_text(&path).map_err(|e| e.to_string())
+}
+
+/// Deletes a saved file and closes the preview toast (preview "Delete").
+#[tauri::command]
+pub fn delete_file(app: AppHandle, path: String) -> Result<(), String> {
+    std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+    preview::close(&app);
+    Ok(())
+}
+
+/// Dismisses the preview toast (auto-timeout from the webview).
+#[tauri::command]
+pub fn close_preview(app: AppHandle) {
+    preview::close(&app);
+}
+
+/// Repositions all off-screen pins onto the primary monitor. Called from the
+/// event loop when the app regains focus (covers display-removed edge case).
+#[tauri::command]
+pub fn reposition_all_pins(app: AppHandle, pins: State<'_, PinRegistry>) {
+    pin::reposition_all_offscreen(&app, &pins);
 }

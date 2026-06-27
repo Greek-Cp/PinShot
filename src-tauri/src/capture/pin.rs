@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use pinshot_core::CapturedImage;
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, PhysicalPosition, WebviewUrl, WebviewWindowBuilder};
 
 /// One pinned capture: the cropped pixels plus the scale of the display it came
 /// from (so the pin renders at the correct logical size).
@@ -68,6 +68,12 @@ impl PinRegistry {
             .pins
             .remove(&id);
     }
+
+    /// Returns all active pin ids.
+    pub fn all_ids(&self) -> Vec<u32> {
+        let state = self.inner.lock().expect("pin registry lock");
+        state.pins.keys().copied().collect()
+    }
 }
 
 fn label_for(pin_id: u32) -> String {
@@ -90,7 +96,9 @@ pub fn open_window(
         .decorations(false)
         .always_on_top(true)
         .skip_taskbar(true)
-        .resizable(false)
+        // Resizable so the webview can zoom the pin via `setSize` (Snipaste-style
+        // scroll/pinch). No decorations means there are no user-draggable borders.
+        .resizable(true)
         .shadow(true)
         .focused(true)
         .build()?;
@@ -106,8 +114,71 @@ pub fn close_window(app: &AppHandle, pin_id: u32) {
 }
 
 /// Brings a pin's window to the front (raise on interaction).
+///
+/// Before raising, checks if the pin is on a visible monitor. If the pin's
+/// center falls outside all available monitors (e.g. because the display it
+/// was on was unplugged), it is repositioned onto the primary monitor so the
+/// user always has a grabbable area (FR edge case: display removed under a pin).
 pub fn raise_window(app: &AppHandle, pin_id: u32) {
     if let Some(window) = app.get_webview_window(&label_for(pin_id)) {
+        reposition_if_offscreen(&window);
         let _ = window.set_focus();
+    }
+}
+
+/// Checks whether a pin window's center is inside any connected monitor.
+/// If not, moves the pin to the primary monitor's work area so it remains
+/// visible and grabbable.
+fn reposition_if_offscreen(window: &tauri::WebviewWindow) {
+    let pos = match window.outer_position() {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+    let size = match window.outer_size() {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+
+    // Center of the pin window in physical coordinates.
+    let cx = pos.x + (size.width as i32 / 2);
+    let cy = pos.y + (size.height as i32 / 2);
+
+    let monitors = match window.available_monitors() {
+        Ok(m) => m,
+        Err(_) => return,
+    };
+
+    // Check if the center falls within any connected monitor.
+    let on_screen = monitors.iter().any(|m| {
+        let mp = m.position();
+        let ms = m.size();
+        cx >= mp.x && cx < mp.x + ms.width as i32 && cy >= mp.y && cy < mp.y + ms.height as i32
+    });
+
+    if on_screen {
+        return;
+    }
+
+    // Pin is off-screen — move it to the primary monitor.
+    let primary = match window.primary_monitor() {
+        Ok(Some(m)) => m,
+        _ => return,
+    };
+    let pp = primary.position();
+
+    // Place at the top-left of the primary monitor with a small margin.
+    let new_x = pp.x + 20;
+    let new_y = pp.y + 20;
+    let _ = window.set_position(PhysicalPosition::new(new_x, new_y));
+}
+
+/// Iterates all live pin windows and repositions any that are off-screen.
+/// Call this when a monitor change is detected (e.g. display disconnected).
+pub fn reposition_all_offscreen(app: &AppHandle, registry: &PinRegistry) {
+    for pin_id in registry.all_ids() {
+        let label = label_for(pin_id);
+        if let Some(window) = app.get_webview_window(&label) {
+            reposition_if_offscreen(&window);
+        }
     }
 }

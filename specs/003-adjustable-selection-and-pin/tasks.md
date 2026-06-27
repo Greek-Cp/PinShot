@@ -72,7 +72,7 @@ manually (a real desktop session is required).
 
 ## Phase 5: Polish & Cross-Cutting
 
-- [ ] T015 [P] Handle the "display removed under a pin" edge case in `src-tauri/src/capture/pin.rs`: if a pin would be fully off-screen, reposition it onto a remaining display (FR + edge case), never crash
+- [x] T015 [P] Handle the "display removed under a pin" edge case in `src-tauri/src/capture/pin.rs`: if a pin would be fully off-screen, reposition it onto a remaining display (FR + edge case), never crash
 - [x] T016 [P] Update `README.md`: document Pin (create + double-click close + copy) and the adjustable-selection handles
 - [x] T017 Full gate: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and `npm --prefix ui run lint && npm --prefix ui run build` all green
 - [ ] T018 Run quickstart end-to-end (core tests automated; GUI + mixed-DPI + offline manual) and record SC-001…SC-008 status

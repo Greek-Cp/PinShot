@@ -3,11 +3,13 @@
 //! Kept dependency-free and fully unit-tested so selection math is verified
 //! without launching the GUI.
 
+use serde::{Deserialize, Serialize};
+
 /// An axis-aligned rectangle in integer pixel coordinates.
 ///
 /// `width` and `height` are always non-negative: [`Rect::from_points`]
 /// normalises a selection dragged in any direction.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Rect {
     pub x: i32,
     pub y: i32,

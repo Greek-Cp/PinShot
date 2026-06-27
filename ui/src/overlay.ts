@@ -38,6 +38,9 @@ const displayId = Number(new URLSearchParams(location.search).get('display') ?? 
 // pixel-exact color sampling and the magnifier.
 const sampler = document.createElement('canvas');
 const samplerCtx = sampler.getContext('2d', { willReadFrequently: true });
+// The whole frozen frame's pixels, read back once. Color sampling then becomes a
+// plain array index per frame instead of a getImageData readback (which stalls).
+let fullData: ImageData | null = null;
 
 let scaleFactor = 1;
 let dragging = false;
@@ -50,6 +53,33 @@ let pointerX = 0;
 let pointerY = 0;
 let cursorHex = '#000000';
 let rafPending = false;
+
+// --- Inline annotation (Snipaste-style) ---------------------------------------
+// After a selection exists, the user can pick a tool and draw directly over the
+// frozen frame. Annotations live in logical (CSS) coords; on output we composite
+// them with the cropped frame into a PNG and hand that to the shell.
+type Tool = 'select' | 'rect' | 'ellipse' | 'arrow' | 'line' | 'pen' | 'text' | 'blur' | 'mosaic';
+
+interface Point {
+  x: number;
+  y: number;
+}
+
+interface Annotation {
+  tool: Tool;
+  points: Point[];
+  color: string;
+  width: number;
+  text?: string;
+}
+
+let activeTool: Tool = 'select';
+const annotations: Annotation[] = [];
+let draft: Annotation | null = null;
+let drawingAnno = false;
+let currentColor = '#ff3b30';
+let currentWidth = 3;
+let textInput: HTMLInputElement | null = null;
 
 // Smallest selection (logical px) so resize handles stay grabbable and the
 // output never collapses to zero (mirrors core `Rect::clamp_min`).
@@ -80,13 +110,16 @@ const HANDLES = [
 ] as const;
 const handleEls: HTMLDivElement[] = [];
 
-// Backdrop dim is four panels framing the selection (cheap to repaint) instead
-// of one element with a huge box-shadow spread.
-const dimTop = document.createElement('div');
-const dimBottom = document.createElement('div');
-const dimLeft = document.createElement('div');
-const dimRight = document.createElement('div');
-const dimPanels = [dimTop, dimBottom, dimLeft, dimRight];
+// Backdrop dimming uses a "static dim + clipped reveal" model: one full-screen
+// dim layer that never changes (composited once), and a second copy of the frame
+// clipped to the selection so the selected region shows through bright. Dragging
+// only moves a small GPU clip — no full-screen blend/repaint per frame.
+const dimEl = document.createElement('div');
+const revealWrap = document.createElement('div');
+let revealImg: HTMLImageElement | null = null;
+// Module-level handle to the frozen frame image, used as the magnifier source
+// (a GPU-decoded <img> instead of the CPU-backed willReadFrequently sampler).
+let frameImg: HTMLImageElement | null = null;
 
 const selectionEl = document.createElement('div');
 const sizeBadge = document.createElement('div');
@@ -96,6 +129,19 @@ const swatch = document.createElement('span');
 const readout = document.createElement('span');
 const hint = document.createElement('div');
 const toolbar = document.createElement('div');
+// Canvas layer that holds the live annotation drawing, above the frame but
+// below the selection chrome. Drawn in logical coords (ctx scaled by dpr).
+const annoCanvas = document.createElement('canvas');
+const annoCtx = annoCanvas.getContext('2d');
+// Committed annotations are rasterised once into this offscreen cache and only
+// rebuilt when the set changes; each frame just blits the cache + the live draft.
+// This keeps expensive Blur/Mosaic from re-rendering on every mouse move.
+const committedCanvas = document.createElement('canvas');
+const committedCtx = committedCanvas.getContext('2d');
+let committedDirty = true;
+const dpr = window.devicePixelRatio || 1;
+// Tool buttons, kept so the active one can be highlighted on change.
+const toolButtons = new Map<Tool, HTMLButtonElement>();
 
 const ACCENT = '#4f46e5';
 
@@ -120,6 +166,38 @@ function makeButton(label: string, onClick: () => void): HTMLButtonElement {
   return button;
 }
 
+function setTool(tool: Tool): void {
+  activeTool = tool;
+  for (const [t, btn] of toolButtons) {
+    btn.style.background = t === tool ? ACCENT : 'rgba(255,255,255,0.12)';
+  }
+  document.body.style.cursor = tool === 'select' ? 'crosshair' : 'crosshair';
+}
+
+// A compact tool button (icon glyph). Selecting it switches the active tool.
+function makeToolButton(tool: Tool, glyph: string, title: string): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.textContent = glyph;
+  button.title = title;
+  button.style.cssText =
+    'appearance:none;border:0;border-radius:6px;width:30px;height:30px;font:600 15px/1 system-ui,sans-serif;' +
+    'color:#fff;background:rgba(255,255,255,0.12);cursor:pointer;';
+  button.addEventListener('mousedown', (e) => e.stopPropagation());
+  button.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setTool(tool);
+  });
+  toolButtons.set(tool, button);
+  return button;
+}
+
+function makeSeparator(): HTMLSpanElement {
+  const sep = document.createElement('span');
+  sep.style.cssText =
+    'width:1px;align-self:stretch;background:rgba(255,255,255,0.18);margin:2px 2px;';
+  return sep;
+}
+
 function buildUi(): void {
   document.body.style.background = '#000';
   // Dragging a selection must not trigger the webview's native text/element
@@ -130,15 +208,20 @@ function buildUi(): void {
     'none';
   document.body.style.cursor = 'crosshair';
 
-  for (const panel of dimPanels) {
-    panel.style.cssText =
-      'position:fixed;background:rgba(0,0,0,0.5);display:none;pointer-events:none;z-index:5;';
-    document.body.appendChild(panel);
-  }
+  // Static full-screen dim, composited once and never resized.
+  dimEl.style.cssText =
+    'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:none;pointer-events:none;z-index:5;';
+  document.body.appendChild(dimEl);
+
+  // Clip window that reveals the bright frame inside the selection. `transform`
+  // creates a containing block so the fixed-position inner image is clipped here.
+  revealWrap.style.cssText =
+    'position:fixed;left:0;top:0;overflow:hidden;display:none;pointer-events:none;z-index:6;' +
+    'transform:translate(0,0);will-change:transform,width,height;';
+  document.body.appendChild(revealWrap);
 
   selectionEl.style.cssText =
-    `position:fixed;border:1px solid ${ACCENT};box-shadow:inset 0 0 0 1px rgba(255,255,255,0.4);` +
-    'display:none;pointer-events:none;z-index:10;';
+    `position:fixed;border:1px solid ${ACCENT};` + 'display:none;pointer-events:none;z-index:10;';
   document.body.appendChild(selectionEl);
 
   for (const h of HANDLES) {
@@ -174,24 +257,74 @@ function buildUi(): void {
   document.body.appendChild(hud);
 
   hint.textContent =
-    'Drag to select  ·  drag edges to resize  ·  ⌘/Ctrl+A all  ·  ↵ Copy  ·  S Save  ·  P Pin  ·  Esc Cancel';
+    'Drag to select  ·  pick a tool to annotate  ·  ⌘/Ctrl+Z undo  ·  ↵ Copy  ·  S Save  ·  P Pin  ·  Esc Cancel';
   hint.style.cssText =
     'position:fixed;left:50%;top:24px;transform:translateX(-50%);padding:8px 14px;' +
     'background:rgba(0,0,0,0.7);color:#fff;font:13px/1 system-ui,sans-serif;border-radius:8px;' +
     'pointer-events:none;z-index:30;white-space:nowrap;';
   document.body.appendChild(hint);
 
+  // Annotation drawing layer: above the frame, below the selection chrome.
+  // Hidden during plain area-selection so its full-screen retina layer doesn't
+  // add compositing cost to every mouse move; shown only while annotating.
+  annoCanvas.style.cssText =
+    'position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:8;display:none;';
+  document.body.appendChild(annoCanvas);
+
   toolbar.style.cssText =
-    'position:fixed;display:none;gap:6px;padding:6px;background:rgba(20,20,22,0.92);' +
+    'position:fixed;display:none;align-items:center;gap:4px;padding:6px;background:rgba(20,20,22,0.92);' +
     'border:1px solid rgba(255,255,255,0.12);border-radius:10px;pointer-events:auto;z-index:30;' +
     'box-shadow:0 6px 24px rgba(0,0,0,0.5);';
-  toolbar.appendChild(makeButton('Pin P', () => void pinSelection()));
-  toolbar.appendChild(makeButton('Copy ↵', () => void commit('clipboard')));
-  toolbar.appendChild(makeButton('Save S', () => void commit('file')));
-  toolbar.appendChild(makeButton('Cancel', () => void cancel()));
+
+  // Annotation tools.
+  toolbar.appendChild(makeToolButton('select', '⤢', 'Select / move (Esc tool)'));
+  toolbar.appendChild(makeToolButton('rect', '▭', 'Rectangle'));
+  toolbar.appendChild(makeToolButton('ellipse', '◯', 'Ellipse'));
+  toolbar.appendChild(makeToolButton('arrow', '↗', 'Arrow'));
+  toolbar.appendChild(makeToolButton('line', '╱', 'Line'));
+  toolbar.appendChild(makeToolButton('pen', '✎', 'Pen'));
+  toolbar.appendChild(makeToolButton('text', 'A', 'Text'));
+  toolbar.appendChild(makeToolButton('blur', '▒', 'Blur'));
+  toolbar.appendChild(makeToolButton('mosaic', '▦', 'Mosaic'));
+  toolbar.appendChild(makeSeparator());
+
+  // Color + thickness.
+  const color = document.createElement('input');
+  color.type = 'color';
+  color.value = currentColor;
+  color.title = 'Color';
+  color.style.cssText =
+    'width:28px;height:28px;padding:0;border:0;border-radius:6px;background:none;cursor:pointer;';
+  color.addEventListener('mousedown', (e) => e.stopPropagation());
+  color.addEventListener('input', () => {
+    currentColor = color.value;
+  });
+  toolbar.appendChild(color);
+
+  const width = document.createElement('input');
+  width.type = 'range';
+  width.min = '1';
+  width.max = '12';
+  width.value = String(currentWidth);
+  width.title = 'Thickness';
+  width.style.cssText = 'width:70px;cursor:pointer;';
+  width.addEventListener('mousedown', (e) => e.stopPropagation());
+  width.addEventListener('input', () => {
+    currentWidth = Number(width.value);
+  });
+  toolbar.appendChild(width);
+  toolbar.appendChild(makeSeparator());
+
+  // Output actions.
+  toolbar.appendChild(makeButton('Pin', () => void pinSelection()));
+  toolbar.appendChild(makeButton('Copy', () => void commit('clipboard')));
+  toolbar.appendChild(makeButton('Save', () => void commit('file')));
+  toolbar.appendChild(makeButton('✕', () => void cancel()));
   // Guard the toolbar container too (clicks land on padding/gaps).
   toolbar.addEventListener('mousedown', (e) => e.stopPropagation());
   document.body.appendChild(toolbar);
+
+  setTool('select');
 }
 
 function physical(v: number): number {
@@ -203,6 +336,16 @@ function setBox(el: HTMLElement, x: number, y: number, w: number, h: number): vo
   el.style.top = `${y}px`;
   el.style.width = `${Math.max(0, w)}px`;
   el.style.height = `${Math.max(0, h)}px`;
+}
+
+// Toggle visibility without redundant writes: setting `display` to its current
+// value still dirties style, so skip the write when it would be a no-op. Reading
+// inline `style.display` is cheap (no layout flush).
+function setShown(el: HTMLElement, show: boolean, shownValue = 'block'): void {
+  const want = show ? shownValue : 'none';
+  if (el.style.display !== want) {
+    el.style.display = want;
+  }
 }
 
 function rectFromDrag(): Rect {
@@ -317,29 +460,33 @@ function positionHandles(r: Rect): void {
 
 function showHandles(visible: boolean): void {
   for (const el of handleEls) {
-    el.style.display = visible ? 'block' : 'none';
+    setShown(el, visible);
   }
 }
 
 function updateColorAt(lx: number, ly: number): void {
-  if (!samplerCtx) {
+  if (!fullData) {
     return;
   }
   const px = Math.max(0, Math.min(physical(lx), sampler.width - 1));
   const py = Math.max(0, Math.min(physical(ly), sampler.height - 1));
-  const data = samplerCtx.getImageData(px, py, 1, 1).data;
-  const hex = `#${[data[0], data[1], data[2]]
+  const i = (py * sampler.width + px) * 4;
+  const data = fullData.data;
+  const r = data[i];
+  const g = data[i + 1];
+  const b = data[i + 2];
+  const hex = `#${[r, g, b]
     .map((c) => c.toString(16).padStart(2, '0'))
     .join('')
     .toUpperCase()}`;
   cursorHex = hex;
   swatch.style.background = hex;
-  readout.textContent = `${hex}  rgb(${data[0]}, ${data[1]}, ${data[2]})`;
+  readout.textContent = `${hex}  rgb(${r}, ${g}, ${b})`;
 }
 
 function drawMagnifier(lx: number, ly: number): void {
   const ctx = magCanvas.getContext('2d');
-  if (!ctx) {
+  if (!ctx || !frameImg) {
     return;
   }
   const srcSize = 15; // physical px sampled around the cursor
@@ -350,7 +497,9 @@ function drawMagnifier(lx: number, ly: number): void {
   const sy = Math.max(0, Math.min(py - srcSize / 2, sampler.height - srcSize));
   ctx.imageSmoothingEnabled = false;
   ctx.clearRect(0, 0, magCanvas.width, magCanvas.height);
-  ctx.drawImage(sampler, sx, sy, srcSize, srcSize, 0, 0, magCanvas.width, magCanvas.height);
+  // Source the GPU-decoded <img> (not the CPU-backed sampler) to avoid a slow
+  // software read each frame.
+  ctx.drawImage(frameImg, sx, sy, srcSize, srcSize, 0, 0, magCanvas.width, magCanvas.height);
   // crosshair
   ctx.strokeStyle = 'rgba(79,70,229,0.9)';
   const mid = magCanvas.width / 2;
@@ -365,33 +514,35 @@ function positionFloaters(lx: number, ly: number): void {
   hud.style.top = `${Math.min(ly + offset + 124, window.innerHeight - 30)}px`;
 }
 
+// Move/size the reveal clip to the selection. The wrapper is positioned with a
+// GPU transform; the inner image counter-translates so it stays pixel-aligned
+// with the (viewport-fixed) background frame, then gets clipped by the wrapper.
 function renderDim(r: Rect): void {
-  const w = window.innerWidth;
-  const h = window.innerHeight;
-  setBox(dimTop, 0, 0, w, r.y);
-  setBox(dimBottom, 0, r.y + r.height, w, h - (r.y + r.height));
-  setBox(dimLeft, 0, r.y, r.x, r.height);
-  setBox(dimRight, r.x + r.width, r.y, w - (r.x + r.width), r.height);
+  revealWrap.style.transform = `translate(${r.x}px, ${r.y}px)`;
+  revealWrap.style.width = `${r.width}px`;
+  revealWrap.style.height = `${r.height}px`;
+  if (revealImg) {
+    revealImg.style.transform = `translate(${-r.x}px, ${-r.y}px)`;
+  }
 }
 
 function showDim(visible: boolean): void {
-  for (const panel of dimPanels) {
-    panel.style.display = visible ? 'block' : 'none';
-  }
+  setShown(dimEl, visible);
+  setShown(revealWrap, visible);
 }
 
 function renderSelection(r: Rect): void {
   setBox(selectionEl, r.x, r.y, r.width, r.height);
-  selectionEl.style.display = 'block';
+  setShown(selectionEl, true);
   sizeBadge.textContent = `${physical(r.width)} × ${physical(r.height)}`;
   const by = r.y > 24 ? r.y - 22 : r.y + 6;
   sizeBadge.style.left = `${r.x}px`;
   sizeBadge.style.top = `${by}px`;
-  sizeBadge.style.display = 'block';
+  setShown(sizeBadge, true);
 }
 
 function positionToolbar(r: Rect): void {
-  const tw = 300;
+  const tw = 560;
   const left = Math.max(8, Math.min(r.x + r.width - tw, window.innerWidth - tw - 8));
   let top = r.y + r.height + 10;
   if (top > window.innerHeight - 52) {
@@ -399,6 +550,280 @@ function positionToolbar(r: Rect): void {
   }
   toolbar.style.left = `${left}px`;
   toolbar.style.top = `${top}px`;
+}
+
+// Normalise a two-point drag into a logical rect.
+function rectOf(pts: Point[]): { x: number; y: number; w: number; h: number } {
+  const a = pts[0];
+  const b = pts[pts.length - 1];
+  return {
+    x: Math.min(a.x, b.x),
+    y: Math.min(a.y, b.y),
+    w: Math.abs(b.x - a.x),
+    h: Math.abs(b.y - a.y),
+  };
+}
+
+// Clamp a pointer to the current selection so annotations never spill outside it.
+function clampToSel(px: number, py: number): Point {
+  return {
+    x: Math.max(sel.x, Math.min(px, sel.x + sel.width)),
+    y: Math.max(sel.y, Math.min(py, sel.y + sel.height)),
+  };
+}
+
+function drawArrow(ctx: CanvasRenderingContext2D, p0: Point, p1: Point, w: number): void {
+  ctx.beginPath();
+  ctx.moveTo(p0.x, p0.y);
+  ctx.lineTo(p1.x, p1.y);
+  ctx.stroke();
+  const ang = Math.atan2(p1.y - p0.y, p1.x - p0.x);
+  const head = Math.max(10, w * 4);
+  ctx.beginPath();
+  ctx.moveTo(p1.x, p1.y);
+  ctx.lineTo(p1.x - head * Math.cos(ang - Math.PI / 6), p1.y - head * Math.sin(ang - Math.PI / 6));
+  ctx.moveTo(p1.x, p1.y);
+  ctx.lineTo(p1.x - head * Math.cos(ang + Math.PI / 6), p1.y - head * Math.sin(ang + Math.PI / 6));
+  ctx.stroke();
+}
+
+// Blur/mosaic read the *original* frozen pixels from the physical-res `sampler`,
+// so they work identically on the on-screen canvas and the export composite.
+function drawBlur(ctx: CanvasRenderingContext2D, a: Annotation): void {
+  const r = rectOf(a.points);
+  if (r.w < 1 || r.h < 1) {
+    return;
+  }
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(r.x, r.y, r.w, r.h);
+  ctx.clip();
+  ctx.filter = `blur(${Math.max(3, a.width * 2)}px)`;
+  ctx.drawImage(
+    sampler,
+    r.x * scaleFactor,
+    r.y * scaleFactor,
+    r.w * scaleFactor,
+    r.h * scaleFactor,
+    r.x,
+    r.y,
+    r.w,
+    r.h,
+  );
+  ctx.restore();
+}
+
+function drawMosaic(ctx: CanvasRenderingContext2D, a: Annotation): void {
+  const r = rectOf(a.points);
+  if (r.w < 1 || r.h < 1) {
+    return;
+  }
+  const block = Math.max(4, a.width * 3);
+  const downW = Math.max(1, Math.round(r.w / block));
+  const downH = Math.max(1, Math.round(r.h / block));
+  const small = document.createElement('canvas');
+  small.width = downW;
+  small.height = downH;
+  const sctx = small.getContext('2d');
+  if (!sctx) {
+    return;
+  }
+  sctx.imageSmoothingEnabled = false;
+  sctx.drawImage(
+    sampler,
+    r.x * scaleFactor,
+    r.y * scaleFactor,
+    r.w * scaleFactor,
+    r.h * scaleFactor,
+    0,
+    0,
+    downW,
+    downH,
+  );
+  const prev = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(small, 0, 0, downW, downH, r.x, r.y, r.w, r.h);
+  ctx.imageSmoothingEnabled = prev;
+}
+
+// Paint a single annotation in logical coords; the caller sets the ctx transform
+// (dpr for the screen, scaleFactor+offset for the export composite).
+function paintAnnotation(ctx: CanvasRenderingContext2D, a: Annotation): void {
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = a.color;
+  ctx.fillStyle = a.color;
+  ctx.lineWidth = a.width;
+  const pts = a.points;
+  const twoPoint = pts.length >= 2;
+  switch (a.tool) {
+    case 'rect': {
+      if (!twoPoint) break;
+      const r = rectOf(pts);
+      ctx.strokeRect(r.x, r.y, r.w, r.h);
+      break;
+    }
+    case 'ellipse': {
+      if (!twoPoint) break;
+      const r = rectOf(pts);
+      ctx.beginPath();
+      ctx.ellipse(r.x + r.w / 2, r.y + r.h / 2, r.w / 2, r.h / 2, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      break;
+    }
+    case 'line': {
+      if (!twoPoint) break;
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+      ctx.stroke();
+      break;
+    }
+    case 'arrow': {
+      if (!twoPoint) break;
+      drawArrow(ctx, pts[0], pts[pts.length - 1], a.width);
+      break;
+    }
+    case 'pen': {
+      if (pts.length < 2) break;
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) {
+        ctx.lineTo(pts[i].x, pts[i].y);
+      }
+      ctx.stroke();
+      break;
+    }
+    case 'text': {
+      ctx.font = `${Math.max(14, a.width * 6)}px system-ui,-apple-system,sans-serif`;
+      ctx.textBaseline = 'top';
+      ctx.fillText(a.text ?? '', pts[0].x, pts[0].y);
+      break;
+    }
+    case 'blur':
+      drawBlur(ctx, a);
+      break;
+    case 'mosaic':
+      drawMosaic(ctx, a);
+      break;
+    default:
+      break;
+  }
+}
+
+// Rebuild the committed-annotation cache (only when the set actually changed).
+function renderCommitted(): void {
+  if (!committedCtx) {
+    return;
+  }
+  committedCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  committedCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+  for (const a of annotations) {
+    paintAnnotation(committedCtx, a);
+  }
+  committedDirty = false;
+}
+
+// Compose the visible layer: cached committed annotations + the live draft.
+function renderAnnotations(): void {
+  if (!annoCtx) {
+    return;
+  }
+  if (committedDirty) {
+    renderCommitted();
+  }
+  annoCtx.setTransform(1, 0, 0, 1, 0, 0);
+  annoCtx.clearRect(0, 0, annoCanvas.width, annoCanvas.height);
+  annoCtx.drawImage(committedCanvas, 0, 0);
+  if (draft) {
+    annoCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (draft.tool === 'blur' || draft.tool === 'mosaic') {
+      // Cheap placeholder while dragging; the real pixel effect renders on commit.
+      const r = rectOf(draft.points);
+      annoCtx.fillStyle = 'rgba(120,120,120,0.5)';
+      annoCtx.fillRect(r.x, r.y, r.w, r.h);
+      annoCtx.strokeStyle = 'rgba(255,255,255,0.7)';
+      annoCtx.lineWidth = 1;
+      annoCtx.strokeRect(r.x, r.y, r.w, r.h);
+    } else {
+      paintAnnotation(annoCtx, draft);
+    }
+  }
+}
+
+// Composite the cropped frozen region + annotations into a PNG data URL at the
+// selection's physical resolution, for the annotated output commands.
+function renderToDataUrl(): string {
+  const physW = Math.max(1, Math.round(sel.width * scaleFactor));
+  const physH = Math.max(1, Math.round(sel.height * scaleFactor));
+  const out = document.createElement('canvas');
+  out.width = physW;
+  out.height = physH;
+  const octx = out.getContext('2d');
+  if (!octx) {
+    return '';
+  }
+  octx.drawImage(
+    sampler,
+    Math.round(sel.x * scaleFactor),
+    Math.round(sel.y * scaleFactor),
+    physW,
+    physH,
+    0,
+    0,
+    physW,
+    physH,
+  );
+  octx.setTransform(scaleFactor, 0, 0, scaleFactor, -sel.x * scaleFactor, -sel.y * scaleFactor);
+  for (const a of annotations) {
+    paintAnnotation(octx, a);
+  }
+  octx.setTransform(1, 0, 0, 1, 0, 0);
+  return out.toDataURL('image/png');
+}
+
+// Floating text-entry box for the Text tool; commits an annotation on Enter/blur.
+function startTextInput(p: Point): void {
+  if (textInput) {
+    textInput.blur();
+  }
+  const input = document.createElement('input');
+  input.type = 'text';
+  const size = Math.max(14, currentWidth * 6);
+  input.style.cssText =
+    `position:fixed;left:${p.x}px;top:${p.y}px;z-index:40;background:rgba(0,0,0,0.5);` +
+    `border:1px solid ${ACCENT};border-radius:4px;padding:2px 4px;outline:none;` +
+    `color:${currentColor};font:${size}px system-ui,sans-serif;min-width:80px;`;
+  input.addEventListener('mousedown', (e) => e.stopPropagation());
+  const color = currentColor;
+  const widthAtStart = currentWidth;
+  const commitText = (): void => {
+    const value = input.value.trim();
+    if (value) {
+      annotations.push({ tool: 'text', points: [p], color, width: widthAtStart, text: value });
+      committedDirty = true;
+    }
+    input.remove();
+    if (textInput === input) {
+      textInput = null;
+    }
+    scheduleRender();
+  };
+  input.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') {
+      commitText();
+    } else if (e.key === 'Escape') {
+      input.remove();
+      if (textInput === input) {
+        textInput = null;
+      }
+    }
+  });
+  input.addEventListener('blur', commitText);
+  textInput = input;
+  document.body.appendChild(input);
+  input.focus();
 }
 
 function update(): void {
@@ -410,12 +835,12 @@ function update(): void {
     renderSelection(r);
     renderDim(r);
     showDim(true);
-    hint.style.display = 'none';
+    setShown(hint, false);
   } else {
-    selectionEl.style.display = 'none';
-    sizeBadge.style.display = 'none';
+    setShown(selectionEl, false);
+    setShown(sizeBadge, false);
     showDim(false);
-    hint.style.display = 'block';
+    setShown(hint, true);
   }
 
   // Resize handles appear once a selection exists and track it through edits.
@@ -426,24 +851,41 @@ function update(): void {
     showHandles(false);
   }
 
-  // Magnifier + color readout track the cursor while drawing or resizing (both
-  // benefit from pixel precision); a settled selection gives way to the toolbar.
+  // Color readout tracks the cursor while drawing/resizing. The magnifier canvas
+  // is the only per-frame canvas work, so during a fast initial drag we skip it
+  // (it's most useful for fine edge placement while resizing, not while sweeping).
   if (!hasSelection || dragging || adjusting === 'resize') {
     updateColorAt(pointerX, pointerY);
-    drawMagnifier(pointerX, pointerY);
     positionFloaters(pointerX, pointerY);
-    magCanvas.style.display = 'block';
-    hud.style.display = 'block';
+    setShown(hud, true);
+    if (!dragging) {
+      drawMagnifier(pointerX, pointerY);
+      setShown(magCanvas, true);
+    } else {
+      setShown(magCanvas, false);
+    }
   } else {
-    magCanvas.style.display = 'none';
-    hud.style.display = 'none';
+    setShown(magCanvas, false);
+    setShown(hud, false);
   }
 
   if (hasSelection && !dragging && !adjusting) {
     positionToolbar(r);
-    toolbar.style.display = 'flex';
+    setShown(toolbar, true, 'flex');
   } else {
-    toolbar.style.display = 'none';
+    setShown(toolbar, false);
+  }
+
+  // Keep the annotation layer out of the compositor entirely while the user is
+  // just selecting an area (no annotations, Select tool) — that path must stay
+  // as light as the original overlay.
+  const showAnno = annotations.length > 0 || draft !== null || activeTool !== 'select';
+  setShown(annoCanvas, showAnno);
+
+  // Only repaint the annotation layer when there's a live draft or the committed
+  // set changed — hovering with a settled selection does no annotation work.
+  if (showAnno && (draft || committedDirty)) {
+    renderAnnotations();
   }
 }
 
@@ -461,7 +903,11 @@ async function commit(output: 'clipboard' | 'file'): Promise<void> {
     return;
   }
   try {
-    await invoke<CommitResponse>('commit_selection', { displayId, rect: r, output });
+    if (annotations.length > 0) {
+      await invoke<CommitResponse>('commit_annotated', { output, png: renderToDataUrl() });
+    } else {
+      await invoke<CommitResponse>('commit_selection', { displayId, rect: r, output });
+    }
   } catch (e) {
     console.error('commit failed', e);
   }
@@ -481,9 +927,25 @@ async function pinSelection(): Promise<void> {
     return;
   }
   try {
-    await invoke('create_pin', { displayId, rect: r });
+    if (annotations.length > 0) {
+      await invoke('pin_annotated', { displayId, rect: r, png: renderToDataUrl() });
+    } else {
+      await invoke('create_pin', { displayId, rect: r });
+    }
   } catch (e) {
     console.error('create_pin failed', e);
+  }
+}
+
+async function editSelection(): Promise<void> {
+  const r = currentRect();
+  if (r.width < 1 || r.height < 1) {
+    return;
+  }
+  try {
+    await invoke('edit_selection', { displayId, rect: r });
+  } catch (e) {
+    console.error('edit_selection failed', e);
   }
 }
 
@@ -501,6 +963,26 @@ function onMouseDown(e: MouseEvent): void {
   }
   pointerX = e.clientX;
   pointerY = e.clientY;
+
+  // Tool active + a selection exists → draw an annotation instead of reselecting.
+  if (activeTool !== 'select' && hasSelection) {
+    e.preventDefault();
+    const p = clampToSel(e.clientX, e.clientY);
+    if (activeTool === 'text') {
+      startTextInput(p);
+      return;
+    }
+    drawingAnno = true;
+    draft = {
+      tool: activeTool,
+      points: [p, { x: p.x, y: p.y }],
+      color: currentColor,
+      width: currentWidth,
+    };
+    scheduleRender();
+    return;
+  }
+
   const hit = hitTest(e.clientX, e.clientY);
 
   if (hit !== 'inside' && hit !== 'outside') {
@@ -534,6 +1016,16 @@ function onMouseDown(e: MouseEvent): void {
 function onMouseMove(e: MouseEvent): void {
   pointerX = e.clientX;
   pointerY = e.clientY;
+  if (drawingAnno && draft) {
+    const p = clampToSel(e.clientX, e.clientY);
+    if (draft.tool === 'pen') {
+      draft.points.push(p);
+    } else {
+      draft.points[1] = p;
+    }
+    scheduleRender();
+    return;
+  }
   if (dragging) {
     curX = e.clientX;
     curY = e.clientY;
@@ -541,6 +1033,8 @@ function onMouseMove(e: MouseEvent): void {
     applyResize(e.clientX, e.clientY);
   } else if (adjusting === 'move') {
     applyMove(e.clientX, e.clientY);
+  } else if (activeTool !== 'select') {
+    document.body.style.cursor = 'crosshair';
   } else {
     // Hover feedback: crosshair / move / resize cursor over the selection.
     document.body.style.cursor = cursorFor(e.clientX, e.clientY);
@@ -550,6 +1044,20 @@ function onMouseMove(e: MouseEvent): void {
 
 function onMouseUp(e: MouseEvent): void {
   if (e.button !== 0) {
+    return;
+  }
+  if (drawingAnno) {
+    drawingAnno = false;
+    if (draft) {
+      const r = rectOf(draft.points);
+      const meaningful = draft.tool === 'pen' ? draft.points.length > 2 : r.w > 2 || r.h > 2;
+      if (meaningful) {
+        annotations.push(draft);
+        committedDirty = true;
+      }
+    }
+    draft = null;
+    scheduleRender();
     return;
   }
   if (dragging) {
@@ -567,9 +1075,24 @@ function onMouseUp(e: MouseEvent): void {
 }
 
 function onKeyDown(e: KeyboardEvent): void {
+  // While the Text tool's input box is focused, keys belong to it.
+  if (textInput) {
+    return;
+  }
   switch (e.key) {
     case 'Escape':
       void cancel();
+      break;
+    case 'z':
+    case 'Z':
+      if (e.metaKey || e.ctrlKey) {
+        e.preventDefault();
+        if (annotations.length > 0) {
+          annotations.pop();
+          committedDirty = true;
+          scheduleRender();
+        }
+      }
       break;
     case 'Enter':
       void commit('clipboard');
@@ -581,6 +1104,10 @@ function onKeyDown(e: KeyboardEvent): void {
     case 'p':
     case 'P':
       void pinSelection();
+      break;
+    case 'e':
+    case 'E':
+      void editSelection();
       break;
     case 'c':
     case 'C':
@@ -611,15 +1138,39 @@ async function init(): Promise<void> {
 
   const img = new Image();
   img.id = 'frame';
+  // Promote the frame to its own GPU layer so the chrome above it composites
+  // without ever forcing the full-screen image to repaint.
   img.style.cssText =
-    'position:fixed;inset:0;width:100vw;height:100vh;display:block;-webkit-user-drag:none;';
+    'position:fixed;inset:0;width:100vw;height:100vh;display:block;-webkit-user-drag:none;' +
+    'transform:translateZ(0);';
   img.src = frame.dataUrl;
   await img.decode().catch(() => undefined);
   document.body.insertBefore(img, document.body.firstChild);
+  frameImg = img;
+
+  // Bright copy of the frame revealed inside the selection clip. position:absolute
+  // + transform keeps it on its own layer and pixel-aligned with the background.
+  const reveal = new Image();
+  reveal.src = frame.dataUrl;
+  reveal.style.cssText =
+    'position:absolute;left:0;top:0;width:100vw;height:100vh;display:block;-webkit-user-drag:none;' +
+    'transform:translateZ(0);';
+  await reveal.decode().catch(() => undefined);
+  revealWrap.appendChild(reveal);
+  revealImg = reveal;
 
   sampler.width = frame.width;
   sampler.height = frame.height;
   samplerCtx?.drawImage(img, 0, 0, frame.width, frame.height);
+  // One readback up front; per-frame color sampling then indexes this buffer.
+  fullData = samplerCtx?.getImageData(0, 0, sampler.width, sampler.height) ?? null;
+
+  // Annotation canvas backs the full viewport at device resolution for crisp
+  // strokes; the context is drawn in logical coords (scaled by dpr per render).
+  annoCanvas.width = Math.round(window.innerWidth * dpr);
+  annoCanvas.height = Math.round(window.innerHeight * dpr);
+  committedCanvas.width = annoCanvas.width;
+  committedCanvas.height = annoCanvas.height;
 
   window.addEventListener('mousedown', onMouseDown);
   window.addEventListener('mousemove', onMouseMove);
