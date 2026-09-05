@@ -1,22 +1,40 @@
-# Rust / Cargo
-target/
-
-# Node / frontend
-node_modules/
-dist/
-
-# Tauri
-src-tauri/target/
-src-tauri/gen/
-
-# OS
+# macOS
 .DS_Store
-Thumbs.db
+.AppleDouble
+.LSOverride
 
-# Editors
-.idea/
-*.swp
+# Thumbnails
+._*
 
-# Env / local
-.env
-.env.*
+# Files that might appear in the root of a Volume
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Xcode & Swift Package Manager
+.build/
+Packages/
+Package.pins
+Package.resolved
+*.xcodeproj
+*.xcworkspace
+!default.mode1v3
+!default.mode2v3
+!default.perspectivev3
+!default.pbxuser
+xcuserdata/
+*.xccheckout
+*.moved-aside
+DerivedData/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Archival
+*.zip
+*.tar.gz
