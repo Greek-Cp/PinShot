@@ -98,7 +98,7 @@ final class PinWindow: NSPanel {
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         self.isOpaque = false
         self.backgroundColor = .clear
-        self.hasShadow = true
+        self.hasShadow = false // Handled natively by custom aura/shadow view
         self.isMovableByWindowBackground = true
         if imageSize.width > 0 && imageSize.height > 0 {
             self.aspectRatio = imageSize
@@ -204,28 +204,21 @@ struct PinContentView: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            // Background Shader / Shadow Effect
+            // Pure Soft Gradient Aura / Shadow (Zero border lines)
             PinAuraGlowView(
                 cornerRadius: 10,
                 style: settingsManager.settings.pinShadowStyle,
                 isHovering: isHovering
             )
-            .padding(6)
+            .padding(10)
 
-            // Image Content
+            // Pure Image Content (Completely borderless)
             Image(nsImage: image)
                 .resizable()
                 .scaledToFit()
                 .opacity(opacity)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(
-                            isHovering ? Color.white.opacity(0.6) : Color.white.opacity(0.2),
-                            lineWidth: 1.0
-                        )
-                )
-                .padding(6)
+                .padding(10)
                 // Double tap / double click to close pin automatically
                 .onTapGesture(count: 2) {
                     onClose()
@@ -269,11 +262,10 @@ struct PinContentView: View {
                     .buttonStyle(.plain)
                     .help("Close Pin (⌘W / Esc / Double Click)")
                 }
-                .padding(12)
+                .padding(16)
                 .transition(.opacity.combined(with: .scale(scale: 0.95)))
             }
         }
-        .padding(6)
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.18)) {
                 self.isHovering = hovering
