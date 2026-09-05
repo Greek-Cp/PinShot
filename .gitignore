@@ -15,8 +15,9 @@
 .VolumeIcon.icns
 .com.apple.timemachine.donotpresent
 
-# Xcode & Swift Package Manager
+# Build output
 .build/
+PinShot.app/
 Packages/
 Package.pins
 Package.resolved
