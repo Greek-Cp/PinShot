@@ -19,7 +19,7 @@ public struct PinAuraGlowView: View {
         Color(red: 0.15, green: 0.85, blue: 1.00)  // Neon Cyan Loop
     ]
 
-    public init(cornerRadius: CGFloat = 12, style: PinShadowStyle, isHovering: Bool = false) {
+    public init(cornerRadius: CGFloat = 10, style: PinShadowStyle, isHovering: Bool = false) {
         self.cornerRadius = cornerRadius
         self.style = style
         self.isHovering = isHovering
@@ -30,7 +30,7 @@ public struct PinAuraGlowView: View {
             switch style {
             case .appleIntelligence:
                 ZStack {
-                    // 1. Wide outer ambient chromatic bloom radiating outward
+                    // 1. Soft outer ambient chromatic bloom (stays safely within 20pt spread)
                     RoundedRectangle(cornerRadius: cornerRadius)
                         .stroke(
                             AngularGradient(
@@ -38,12 +38,12 @@ public struct PinAuraGlowView: View {
                                 center: .center,
                                 angle: .degrees(rotationAngle)
                             ),
-                            lineWidth: isHovering ? 32 : 22
+                            lineWidth: isHovering ? 12 : 8
                         )
-                        .blur(radius: isHovering ? 18 : 12)
-                        .opacity(isHovering ? 0.95 : 0.75)
+                        .blur(radius: isHovering ? 10 : 7)
+                        .opacity(isHovering ? 0.90 : 0.75)
 
-                    // 2. High-intensity vibrant rim glow right around the perimeter
+                    // 2. Crisp radiant rim glow around image perimeter
                     RoundedRectangle(cornerRadius: cornerRadius)
                         .stroke(
                             AngularGradient(
@@ -51,19 +51,19 @@ public struct PinAuraGlowView: View {
                                 center: .center,
                                 angle: .degrees(rotationAngle)
                             ),
-                            lineWidth: isHovering ? 14 : 9
+                            lineWidth: isHovering ? 4 : 2.5
                         )
-                        .blur(radius: isHovering ? 7 : 4)
+                        .blur(radius: isHovering ? 3 : 1.5)
                         .opacity(isHovering ? 1.0 : 0.90)
 
-                    // 3. Natural soft dark under-shadow for elevation & contrast against bright backgrounds
+                    // 3. Natural soft dark under-shadow for contrast
                     RoundedRectangle(cornerRadius: cornerRadius)
-                        .fill(Color.black.opacity(0.35))
-                        .blur(radius: 10)
-                        .offset(y: 4)
+                        .fill(Color.black.opacity(0.30))
+                        .blur(radius: 6)
+                        .offset(y: 2)
                 }
                 .onAppear {
-                    // Smooth, continuous rotation around the perimeter (Apple Intelligence style)
+                    // Smooth, continuous rotation around the perimeter
                     withAnimation(.linear(duration: 6.0).repeatForever(autoreverses: false)) {
                         rotationAngle = 360
                     }
@@ -71,14 +71,14 @@ public struct PinAuraGlowView: View {
 
             case .classicShadow:
                 RoundedRectangle(cornerRadius: cornerRadius)
-                    .fill(Color.black.opacity(isHovering ? 0.50 : 0.35))
-                    .blur(radius: isHovering ? 16 : 10)
-                    .offset(y: 5)
+                    .fill(Color.black.opacity(isHovering ? 0.45 : 0.30))
+                    .blur(radius: isHovering ? 10 : 7)
+                    .offset(y: 3)
 
             case .minimalBorder:
                 RoundedRectangle(cornerRadius: cornerRadius)
-                    .fill(Color.black.opacity(0.20))
-                    .blur(radius: 6)
+                    .fill(Color.black.opacity(0.15))
+                    .blur(radius: 4)
 
             case .none:
                 EmptyView()

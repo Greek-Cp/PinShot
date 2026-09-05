@@ -59,7 +59,7 @@ final class PinWindowManager: ObservableObject {
 final class PinWindow: NSPanel {
     let pinID = UUID()
     let baseImage: NSImage
-    private static let glowPadding: CGFloat = 16
+    public static let glowPadding: CGFloat = 28
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
@@ -78,7 +78,7 @@ final class PinWindow: NSPanel {
 
         let initialRect: CGRect
         if let origin = initialOrigin {
-            // Center the glow area around the selected origin
+            // Inset so the screenshot content aligns with original captured position
             let adjX = origin.x - Self.glowPadding
             let adjY = origin.y - Self.glowPadding
             initialRect = CGRect(origin: CGPoint(x: adjX, y: adjY), size: windowSize)
@@ -104,11 +104,11 @@ final class PinWindow: NSPanel {
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         self.isOpaque = false
         self.backgroundColor = .clear
-        self.hasShadow = false // Handled natively by custom aura/shadow view
+        self.hasShadow = false // Shadow/Aura handled natively by PinAuraGlowView
         self.isMovableByWindowBackground = true
         if totalW > 0 && totalH > 0 {
             self.aspectRatio = windowSize
-            self.minSize = CGSize(width: 100, height: max(100 * (totalH / totalW), 60))
+            self.minSize = CGSize(width: 120, height: max(120 * (totalH / totalW), 70))
         }
 
         setupContentView()
@@ -210,19 +210,19 @@ struct PinContentView: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            // Surrounding Apple Intelligence Glow / Aura (Rotating colors, completely borderless)
-            PinAuraGlowView(
-                cornerRadius: 12,
-                style: settingsManager.settings.pinShadowStyle,
-                isHovering: isHovering
-            )
-
-            // Pure Image Content (Centered, 100% borderless, smooth rounded corners)
+            // Image Content with matched Background Glow Aura
             Image(nsImage: image)
                 .resizable()
                 .scaledToFit()
                 .opacity(opacity)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .background(
+                    PinAuraGlowView(
+                        cornerRadius: 10,
+                        style: settingsManager.settings.pinShadowStyle,
+                        isHovering: isHovering
+                    )
+                )
                 // Double tap / double click to close pin automatically
                 .onTapGesture(count: 2) {
                     onClose()
@@ -266,11 +266,11 @@ struct PinContentView: View {
                     .buttonStyle(.plain)
                     .help("Close Pin (⌘W / Esc / Double Click)")
                 }
-                .padding(10)
+                .padding(8)
                 .transition(.opacity.combined(with: .scale(scale: 0.95)))
             }
         }
-        .padding(16) // Ample padding for outer glow radiance
+        .padding(PinWindow.glowPadding) // Sufficient margin so the glow gradient fades to 0.0 naturally
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.18)) {
                 self.isHovering = hovering
