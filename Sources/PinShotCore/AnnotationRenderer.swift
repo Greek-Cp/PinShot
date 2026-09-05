@@ -6,31 +6,28 @@ import CoreImage
 import AppKit
 
 public struct AnnotationRenderer: Sendable {
-    /// Renders an AnnotationDocument on top of a base NSImage and returns the composited NSImage.
+    /// Renders an AnnotationDocument on top of a base NSImage and returns the composited NSImage safely.
     public static func render(
         document: AnnotationDocument,
         onto baseImage: NSImage,
         scale: CGFloat = 1.0
     ) -> NSImage {
         let size = baseImage.size
-        let newImage = NSImage(size: size)
-        
-        newImage.lockFocus()
-        guard let context = NSGraphicsContext.current?.cgContext else {
-            newImage.unlockFocus()
-            return baseImage
+        guard size.width > 0, size.height > 0 else { return baseImage }
+        guard !document.isEmpty else { return baseImage }
+
+        let composited = NSImage(size: size, flipped: false) { dstRect in
+            baseImage.draw(in: dstRect)
+
+            if let context = NSGraphicsContext.current?.cgContext {
+                for item in document.items {
+                    drawItem(item, in: context, imageSize: size)
+                }
+            }
+            return true
         }
 
-        // Draw base image
-        baseImage.draw(in: CGRect(origin: .zero, size: size))
-
-        // Draw annotations
-        for item in document.items {
-            drawItem(item, in: context, imageSize: size)
-        }
-
-        newImage.unlockFocus()
-        return newImage
+        return composited
     }
 
     private static func drawItem(_ item: AnnotationItem, in context: CGContext, imageSize: CGSize) {
@@ -141,7 +138,6 @@ public struct AnnotationRenderer: Sendable {
             numAttr.draw(at: textOrigin)
 
         case .mosaic:
-            // Placeholder for mosaic rect stroke
             let rect = CGRect(
                 x: min(item.startPoint.x, item.endPoint.x),
                 y: min(item.startPoint.y, item.endPoint.y),

@@ -54,6 +54,8 @@ final class OverlayWindowManager: NSObject, FloatingToolbarDelegate {
         overlayWindows.removeAll()
         hideToolbar()
         capturedFrames.removeAll()
+        currentSelection = nil
+        NSCursor.arrow.set()
     }
 
     private func createOverlayWindow(for screen: NSScreen) -> NSWindow {
@@ -63,6 +65,7 @@ final class OverlayWindowManager: NSObject, FloatingToolbarDelegate {
             backing: .buffered,
             defer: false
         )
+        panel.isReleasedWhenClosed = false
         panel.level = .screenSaver
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isOpaque = false

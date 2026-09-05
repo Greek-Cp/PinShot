@@ -239,6 +239,7 @@ final class FloatingToolbarPanel: NSPanel {
             backing: .buffered,
             defer: false
         )
+        self.isReleasedWhenClosed = false
         self.isOpaque = false
         self.backgroundColor = .clear
         self.level = .screenSaver + 1

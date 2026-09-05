@@ -16,13 +16,13 @@ final class PinWindowManager: ObservableObject {
     }
 
     func closePin(_ pin: PinWindow) {
-        pin.close()
-        activePins.removeAll(where: { $0 == pin })
+        pin.orderOut(nil)
+        activePins.removeAll(where: { $0.pinID == pin.pinID })
     }
 
     func closeAllPins() {
         for pin in activePins {
-            pin.close()
+            pin.orderOut(nil)
         }
         activePins.removeAll()
     }
@@ -31,14 +31,15 @@ final class PinWindowManager: ObservableObject {
 final class PinWindow: NSPanel {
     let pinID = UUID()
     let baseImage: NSImage
-    private var visualEffectView: NSVisualEffectView!
 
     init(image: NSImage, initialOrigin: CGPoint? = nil) {
         self.baseImage = image
         let imageSize = image.size
         let maxInitialWidth: CGFloat = 600
-        let scale = imageSize.width > maxInitialWidth ? maxInitialWidth / imageSize.width : 1.0
-        let windowSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+        let scale = (imageSize.width > 0 && imageSize.width > maxInitialWidth) ? maxInitialWidth / imageSize.width : 1.0
+        let windowWidth = max(imageSize.width * scale, 60)
+        let windowHeight = max(imageSize.height * scale, 40)
+        let windowSize = CGSize(width: windowWidth, height: windowHeight)
 
         let initialRect: CGRect
         if let origin = initialOrigin {
@@ -57,14 +58,17 @@ final class PinWindow: NSPanel {
             defer: false
         )
 
+        self.isReleasedWhenClosed = false
         self.level = .floating
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         self.isOpaque = false
         self.backgroundColor = .clear
         self.hasShadow = true
         self.isMovableByWindowBackground = true
-        self.aspectRatio = imageSize
-        self.minSize = CGSize(width: 80, height: 80 * (imageSize.height / imageSize.width))
+        if imageSize.width > 0 && imageSize.height > 0 {
+            self.aspectRatio = imageSize
+            self.minSize = CGSize(width: 80, height: max(80 * (imageSize.height / imageSize.width), 40))
+        }
 
         setupContentView()
     }
