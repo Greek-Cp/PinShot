@@ -163,6 +163,25 @@ struct SettingsView: View {
                 .font(.headline)
 
             VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Pinned Image Glow / Shadow:")
+                            .font(.system(size: 13, weight: .medium))
+                        Text("Style of edge aura or drop shadow on pinned screenshots")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Picker("", selection: $settingsManager.settings.pinShadowStyle) {
+                        ForEach(PinShadowStyle.allCases, id: \.self) { style in
+                            Text(style.rawValue).tag(style)
+                        }
+                    }
+                    .frame(width: 190)
+                }
+
+                Divider()
+
                 Toggle("Play camera sound effect on capture & pin", isOn: $settingsManager.settings.playSoundEffects)
                 Toggle("Show Loupe magnifier & color picker under cursor", isOn: $settingsManager.settings.showMagnifierLoupe)
                 Toggle("Auto-copy to clipboard immediately upon selection", isOn: $settingsManager.settings.autoCopyToClipboardOnCapture)

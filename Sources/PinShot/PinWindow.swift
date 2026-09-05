@@ -198,12 +198,21 @@ struct PinContentView: View {
     let onCopy: () -> Void
     let onSave: () -> Void
 
+    @ObservedObject private var settingsManager = SettingsManager.shared
     @State private var isHovering: Bool = false
     @State private var opacity: Double = 1.0
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            // Image Content with Clean Minimal Shadow & Border
+            // Background Shader / Shadow Effect
+            PinAuraGlowView(
+                cornerRadius: 10,
+                style: settingsManager.settings.pinShadowStyle,
+                isHovering: isHovering
+            )
+            .padding(6)
+
+            // Image Content
             Image(nsImage: image)
                 .resizable()
                 .scaledToFit()
@@ -212,12 +221,11 @@ struct PinContentView: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: 10)
                         .stroke(
-                            isHovering ? Color.blue.opacity(0.7) : Color.white.opacity(0.25),
-                            lineWidth: isHovering ? 1.5 : 1.0
+                            isHovering ? Color.white.opacity(0.6) : Color.white.opacity(0.2),
+                            lineWidth: 1.0
                         )
                 )
-                .shadow(color: Color.black.opacity(0.35), radius: 10, x: 0, y: 5)
-                .padding(4)
+                .padding(6)
                 // Double tap / double click to close pin automatically
                 .onTapGesture(count: 2) {
                     onClose()
@@ -261,10 +269,11 @@ struct PinContentView: View {
                     .buttonStyle(.plain)
                     .help("Close Pin (⌘W / Esc / Double Click)")
                 }
-                .padding(10)
+                .padding(12)
                 .transition(.opacity.combined(with: .scale(scale: 0.95)))
             }
         }
+        .padding(6)
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.18)) {
                 self.isHovering = hovering
@@ -274,6 +283,13 @@ struct PinContentView: View {
             Button("Copy Image (⌘C)", action: onCopy)
             Button("Save Image As... (⌘S)", action: onSave)
             Divider()
+            Menu("Shadow / Aura Effect") {
+                ForEach(PinShadowStyle.allCases, id: \.self) { style in
+                    Button(style.rawValue) {
+                        settingsManager.settings.pinShadowStyle = style
+                    }
+                }
+            }
             Menu("Opacity") {
                 Button("100%") { opacity = 1.0 }
                 Button("75%") { opacity = 0.75 }

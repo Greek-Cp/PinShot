@@ -12,6 +12,7 @@ public struct PinShotSettings: Equatable, Sendable, Codable {
     public var saveDirectoryPath: String
     public var imageFormat: ImageOutputFormat
     public var toolbarOrientation: ToolbarOrientation
+    public var pinShadowStyle: PinShadowStyle
     public var playSoundEffects: Bool
     public var showMagnifierLoupe: Bool
     public var autoCopyToClipboardOnCapture: Bool
@@ -26,6 +27,7 @@ public struct PinShotSettings: Equatable, Sendable, Codable {
         saveDirectoryPath: String = (FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first?.appendingPathComponent("PinShots").path) ?? "~/Pictures/PinShots",
         imageFormat: ImageOutputFormat = .png,
         toolbarOrientation: ToolbarOrientation = .horizontal,
+        pinShadowStyle: PinShadowStyle = .appleIntelligence,
         playSoundEffects: Bool = true,
         showMagnifierLoupe: Bool = true,
         autoCopyToClipboardOnCapture: Bool = false
@@ -39,10 +41,18 @@ public struct PinShotSettings: Equatable, Sendable, Codable {
         self.saveDirectoryPath = saveDirectoryPath
         self.imageFormat = imageFormat
         self.toolbarOrientation = toolbarOrientation
+        self.pinShadowStyle = pinShadowStyle
         self.playSoundEffects = playSoundEffects
         self.showMagnifierLoupe = showMagnifierLoupe
         self.autoCopyToClipboardOnCapture = autoCopyToClipboardOnCapture
     }
+}
+
+public enum PinShadowStyle: String, CaseIterable, Sendable, Codable {
+    case appleIntelligence = "Apple Intelligence Aura"
+    case classicShadow = "Classic macOS Shadow"
+    case minimalBorder = "Minimal Border"
+    case none = "None"
 }
 
 public enum ImageOutputFormat: String, CaseIterable, Sendable, Codable {
