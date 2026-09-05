@@ -56,10 +56,32 @@ final class PinWindowManager: ObservableObject {
     }
 }
 
+final class PinHostingView<Content: View>: NSHostingView<Content> {
+    weak var pinWindow: PinWindow?
+
+    @MainActor required init(rootView: Content) {
+        super.init(rootView: rootView)
+        self.wantsLayer = true
+        self.layer?.masksToBounds = false
+    }
+
+    @MainActor required dynamic init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func magnify(with event: NSEvent) {
+        pinWindow?.handleMagnify(event)
+    }
+
+    override func smartMagnify(with event: NSEvent) {
+        pinWindow?.handleSmartMagnify(event)
+    }
+}
+
 final class PinWindow: NSPanel {
     let pinID = UUID()
     let baseImage: NSImage
-    public static let glowPadding: CGFloat = 28
+    public static let glowPadding: CGFloat = 36
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
@@ -115,24 +137,27 @@ final class PinWindow: NSPanel {
     }
 
     private func setupContentView() {
-        let hostingView = NSHostingView(
-            rootView: PinContentView(
-                image: baseImage,
-                onClose: { [weak self] in
-                    guard let self = self else { return }
-                    PinWindowManager.shared.closePin(self)
-                },
-                onCopy: { [weak self] in
-                    guard let self = self else { return }
-                    PasteboardService.shared.copyImage(self.baseImage)
-                    SoundService.shared.playCaptureSound()
-                },
-                onSave: { [weak self] in
-                    guard let self = self else { return }
-                    self.saveImage()
-                }
-            )
+        let contentView = PinContentView(
+            image: baseImage,
+            onClose: { [weak self] in
+                guard let self = self else { return }
+                PinWindowManager.shared.closePin(self)
+            },
+            onCopy: { [weak self] in
+                guard let self = self else { return }
+                PasteboardService.shared.copyImage(self.baseImage)
+                SoundService.shared.playCaptureSound()
+            },
+            onSave: { [weak self] in
+                guard let self = self else { return }
+                self.saveImage()
+            },
+            onPinchScale: { [weak self] factor in
+                self?.scaleBy(factor)
+            }
         )
+        let hostingView = PinHostingView(rootView: contentView)
+        hostingView.pinWindow = self
         self.contentView = hostingView
     }
 
@@ -142,27 +167,12 @@ final class PinWindow: NSPanel {
     }
 
     // MARK: - 2-Finger Pinch-to-Resize Gesture (Trackpad / Magic Mouse)
-    override func magnify(with event: NSEvent) {
+    func handleMagnify(_ event: NSEvent) {
         let magnification = event.magnification
-        let factor = 1.0 + magnification
-        var currentFrame = self.frame
-        let oldSize = currentFrame.size
-        
-        let newWidth = max(min(oldSize.width * factor, 3000), self.minSize.width)
-        let newHeight = newWidth * (oldSize.height / oldSize.width)
-        
-        // Anchor to center point so resizing zooms in/out gracefully around cursor/center
-        let deltaW = newWidth - oldSize.width
-        let deltaH = newHeight - oldSize.height
-        currentFrame.origin.x -= deltaW / 2
-        currentFrame.origin.y -= deltaH / 2
-        currentFrame.size = CGSize(width: newWidth, height: newHeight)
-        
-        self.setFrame(currentFrame, display: true, animate: false)
+        scaleBy(1.0 + magnification)
     }
 
-    // Smart 2-finger double tap zoom toggle
-    override func smartMagnify(with event: NSEvent) {
+    func handleSmartMagnify(_ event: NSEvent) {
         let imageSize = baseImage.size
         let baseW = imageSize.width + (Self.glowPadding * 2)
         let baseH = imageSize.height + (Self.glowPadding * 2)
@@ -175,6 +185,23 @@ final class PinWindow: NSPanel {
         currentFrame.size = CGSize(width: baseW, height: baseH)
         
         self.setFrame(currentFrame, display: true, animate: true)
+    }
+
+    func scaleBy(_ factor: CGFloat) {
+        guard factor > 0.05 && factor < 20.0 else { return }
+        var currentFrame = self.frame
+        let oldSize = currentFrame.size
+        
+        let newWidth = max(min(oldSize.width * factor, 3500), self.minSize.width)
+        let newHeight = newWidth * (oldSize.height / oldSize.width)
+        
+        let deltaW = newWidth - oldSize.width
+        let deltaH = newHeight - oldSize.height
+        currentFrame.origin.x -= deltaW / 2
+        currentFrame.origin.y -= deltaH / 2
+        currentFrame.size = CGSize(width: newWidth, height: newHeight)
+        
+        self.setFrame(currentFrame, display: true, animate: false)
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -239,6 +266,7 @@ struct PinContentView: View {
     let onClose: () -> Void
     let onCopy: () -> Void
     let onSave: () -> Void
+    var onPinchScale: ((CGFloat) -> Void)? = nil
 
     @ObservedObject private var settingsManager = SettingsManager.shared
     @State private var isHovering: Bool = false
@@ -246,19 +274,19 @@ struct PinContentView: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            // Surrounding Apple Intelligence Glow / Aura (Shows on highlight/hover)
-            PinAuraGlowView(
-                cornerRadius: 12,
-                style: settingsManager.settings.pinShadowStyle,
-                isHovering: isHovering
-            )
-
-            // Pure Image Content (100% borderless, smooth rounded corners)
+            // Image Content with matched Background Glow Aura
             Image(nsImage: image)
                 .resizable()
                 .scaledToFit()
                 .opacity(opacity)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .background(
+                    PinAuraGlowView(
+                        cornerRadius: 10,
+                        style: settingsManager.settings.pinShadowStyle,
+                        isHovering: isHovering
+                    )
+                )
                 // Double tap / double click to close pin automatically
                 .onTapGesture(count: 2) {
                     onClose()
@@ -302,16 +330,22 @@ struct PinContentView: View {
                     .buttonStyle(.plain)
                     .help("Close Pin (⌘W / Esc / Double Click)")
                 }
-                .padding(10)
+                .padding(8)
                 .transition(.opacity.combined(with: .scale(scale: 0.95)))
             }
         }
-        .padding(16) // Ample padding for outer glow radiance
+        .padding(PinWindow.glowPadding) // Generous margin ensuring glow fades to transparent without clipping
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.18)) {
                 self.isHovering = hovering
             }
         }
+        .gesture(
+            MagnifyGesture()
+                .onChanged { value in
+                    onPinchScale?(value.magnification)
+                }
+        )
         .contextMenu {
             Button("Copy Image (⌘C)", action: onCopy)
             Button("Save Image As... (⌘S)", action: onSave)

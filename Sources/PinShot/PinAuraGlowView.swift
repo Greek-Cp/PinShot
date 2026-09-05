@@ -30,45 +30,44 @@ public struct PinAuraGlowView: View {
             switch style {
             case .appleIntelligence:
                 ZStack {
-                    // 1. Apple Intelligence Chromatic Rainbow Aura (Visible ONLY when Highlighted/Hovered)
-                    ZStack {
-                        // Wide outer ambient chromatic bloom
-                        RoundedRectangle(cornerRadius: cornerRadius)
-                            .stroke(
-                                AngularGradient(
-                                    gradient: Gradient(colors: auraColors),
-                                    center: .center,
-                                    angle: .degrees(rotationAngle)
-                                ),
-                                lineWidth: 14
-                            )
-                            .blur(radius: 10)
-                            .opacity(0.95)
-
-                        // Closer radiant rim glow around image perimeter
-                        RoundedRectangle(cornerRadius: cornerRadius)
-                            .stroke(
-                                AngularGradient(
-                                    gradient: Gradient(colors: auraColors),
-                                    center: .center,
-                                    angle: .degrees(rotationAngle)
-                                ),
-                                lineWidth: 4.5
-                            )
-                            .blur(radius: 2.5)
-                            .opacity(1.0)
-                    }
-                    .opacity(isHovering ? 1.0 : 0.0) // Sembunyi jika tidak di-highlight!
-                    .animation(.easeInOut(duration: 0.22), value: isHovering)
-
-                    // 2. Base clean minimal elevation shadow (always present for subtle depth)
+                    // 1. Base subtle dark shadow (for depth on any background)
                     RoundedRectangle(cornerRadius: cornerRadius)
-                        .fill(Color.black.opacity(isHovering ? 0.35 : 0.22))
+                        .fill(Color.black.opacity(isHovering ? 0.30 : 0.20))
                         .blur(radius: isHovering ? 8 : 5)
                         .offset(y: 2)
+
+                    // 2. Apple Intelligence Chromatic Rainbow Aura (Visible ONLY when Highlighted/Hovered)
+                    ZStack {
+                        // Soft diffuse outer aura bloom
+                        RoundedRectangle(cornerRadius: cornerRadius + 2)
+                            .stroke(
+                                AngularGradient(
+                                    gradient: Gradient(colors: auraColors),
+                                    center: .center,
+                                    angle: .degrees(rotationAngle)
+                                ),
+                                lineWidth: 8
+                            )
+                            .blur(radius: 8)
+                            .opacity(0.85)
+
+                        // Vibrant closer rim radiance
+                        RoundedRectangle(cornerRadius: cornerRadius)
+                            .stroke(
+                                AngularGradient(
+                                    gradient: Gradient(colors: auraColors),
+                                    center: .center,
+                                    angle: .degrees(rotationAngle)
+                                ),
+                                lineWidth: 3.5
+                            )
+                            .blur(radius: 2)
+                            .opacity(0.95)
+                    }
+                    .opacity(isHovering ? 1.0 : 0.0)
+                    .animation(.easeInOut(duration: 0.22), value: isHovering)
                 }
                 .onAppear {
-                    // Smooth continuous chromatic rotation
                     withAnimation(.linear(duration: 5.5).repeatForever(autoreverses: false)) {
                         rotationAngle = 360
                     }
