@@ -59,6 +59,7 @@ final class PinWindowManager: ObservableObject {
 final class PinWindow: NSPanel {
     let pinID = UUID()
     let baseImage: NSImage
+    private static let glowPadding: CGFloat = 16
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
@@ -69,13 +70,18 @@ final class PinWindow: NSPanel {
         let imageSize = image.size
         let maxInitialWidth: CGFloat = 600
         let scale = (imageSize.width > 0 && imageSize.width > maxInitialWidth) ? maxInitialWidth / imageSize.width : 1.0
-        let windowWidth = max(imageSize.width * scale, 60)
-        let windowHeight = max(imageSize.height * scale, 40)
-        let windowSize = CGSize(width: windowWidth, height: windowHeight)
+        let baseW = max(imageSize.width * scale, 60)
+        let baseH = max(imageSize.height * scale, 40)
+        let totalW = baseW + (Self.glowPadding * 2)
+        let totalH = baseH + (Self.glowPadding * 2)
+        let windowSize = CGSize(width: totalW, height: totalH)
 
         let initialRect: CGRect
         if let origin = initialOrigin {
-            initialRect = CGRect(origin: origin, size: windowSize)
+            // Center the glow area around the selected origin
+            let adjX = origin.x - Self.glowPadding
+            let adjY = origin.y - Self.glowPadding
+            initialRect = CGRect(origin: CGPoint(x: adjX, y: adjY), size: windowSize)
         } else {
             let screenRect = NSScreen.main?.visibleFrame ?? CGRect(x: 100, y: 100, width: 800, height: 600)
             let x = screenRect.midX - (windowSize.width / 2)
@@ -100,9 +106,9 @@ final class PinWindow: NSPanel {
         self.backgroundColor = .clear
         self.hasShadow = false // Handled natively by custom aura/shadow view
         self.isMovableByWindowBackground = true
-        if imageSize.width > 0 && imageSize.height > 0 {
-            self.aspectRatio = imageSize
-            self.minSize = CGSize(width: 80, height: max(80 * (imageSize.height / imageSize.width), 40))
+        if totalW > 0 && totalH > 0 {
+            self.aspectRatio = windowSize
+            self.minSize = CGSize(width: 100, height: max(100 * (totalH / totalW), 60))
         }
 
         setupContentView()
@@ -204,21 +210,19 @@ struct PinContentView: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            // Pure Soft Gradient Aura / Shadow (Zero border lines)
+            // Surrounding Apple Intelligence Glow / Aura (Rotating colors, completely borderless)
             PinAuraGlowView(
-                cornerRadius: 10,
+                cornerRadius: 12,
                 style: settingsManager.settings.pinShadowStyle,
                 isHovering: isHovering
             )
-            .padding(10)
 
-            // Pure Image Content (Completely borderless)
+            // Pure Image Content (Centered, 100% borderless, smooth rounded corners)
             Image(nsImage: image)
                 .resizable()
                 .scaledToFit()
                 .opacity(opacity)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .padding(10)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
                 // Double tap / double click to close pin automatically
                 .onTapGesture(count: 2) {
                     onClose()
@@ -262,10 +266,11 @@ struct PinContentView: View {
                     .buttonStyle(.plain)
                     .help("Close Pin (⌘W / Esc / Double Click)")
                 }
-                .padding(16)
+                .padding(10)
                 .transition(.opacity.combined(with: .scale(scale: 0.95)))
             }
         }
+        .padding(16) // Ample padding for outer glow radiance
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.18)) {
                 self.isHovering = hovering

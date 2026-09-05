@@ -6,21 +6,20 @@ public struct PinAuraGlowView: View {
     let style: PinShadowStyle
     let isHovering: Bool
 
-    // Apple Intelligence Chromatic Colors
-    private let auraGradient = AngularGradient(
-        gradient: Gradient(colors: [
-            Color(red: 0.16, green: 0.82, blue: 0.98), // Cyan
-            Color(red: 0.35, green: 0.46, blue: 1.00), // Electric Blue
-            Color(red: 0.70, green: 0.28, blue: 0.98), // Vivid Violet
-            Color(red: 0.98, green: 0.32, blue: 0.68), // Magenta
-            Color(red: 1.00, green: 0.52, blue: 0.20), // Sunset Orange
-            Color(red: 0.98, green: 0.82, blue: 0.30), // Sunburst Gold
-            Color(red: 0.16, green: 0.82, blue: 0.98)  // Cyan Loop
-        ]),
-        center: .center
-    )
+    @State private var rotationAngle: Double = 0
 
-    public init(cornerRadius: CGFloat = 10, style: PinShadowStyle, isHovering: Bool = false) {
+    // Apple Intelligence Vibrant Chromatic Colors
+    private let auraColors: [Color] = [
+        Color(red: 0.15, green: 0.85, blue: 1.00), // Neon Cyan
+        Color(red: 0.35, green: 0.45, blue: 1.00), // Electric Blue
+        Color(red: 0.72, green: 0.25, blue: 1.00), // Vivid Violet / Purple
+        Color(red: 1.00, green: 0.28, blue: 0.65), // Magenta / Hot Pink
+        Color(red: 1.00, green: 0.50, blue: 0.15), // Sunset Orange
+        Color(red: 1.00, green: 0.82, blue: 0.25), // Sunburst Gold
+        Color(red: 0.15, green: 0.85, blue: 1.00)  // Neon Cyan Loop
+    ]
+
+    public init(cornerRadius: CGFloat = 12, style: PinShadowStyle, isHovering: Bool = false) {
         self.cornerRadius = cornerRadius
         self.style = style
         self.isHovering = isHovering
@@ -31,35 +30,55 @@ public struct PinAuraGlowView: View {
             switch style {
             case .appleIntelligence:
                 ZStack {
-                    // Deep ambient chromatic bloom (pure diffuse aura, no hard lines or borders)
+                    // 1. Wide outer ambient chromatic bloom radiating outward
                     RoundedRectangle(cornerRadius: cornerRadius)
-                        .fill(auraGradient)
+                        .stroke(
+                            AngularGradient(
+                                gradient: Gradient(colors: auraColors),
+                                center: .center,
+                                angle: .degrees(rotationAngle)
+                            ),
+                            lineWidth: isHovering ? 32 : 22
+                        )
                         .blur(radius: isHovering ? 18 : 12)
-                        .opacity(isHovering ? 0.85 : 0.60)
+                        .opacity(isHovering ? 0.95 : 0.75)
 
-                    // Secondary closer vibrant radiance
+                    // 2. High-intensity vibrant rim glow right around the perimeter
                     RoundedRectangle(cornerRadius: cornerRadius)
-                        .fill(auraGradient)
-                        .blur(radius: isHovering ? 8 : 5)
-                        .opacity(isHovering ? 0.75 : 0.50)
+                        .stroke(
+                            AngularGradient(
+                                gradient: Gradient(colors: auraColors),
+                                center: .center,
+                                angle: .degrees(rotationAngle)
+                            ),
+                            lineWidth: isHovering ? 14 : 9
+                        )
+                        .blur(radius: isHovering ? 7 : 4)
+                        .opacity(isHovering ? 1.0 : 0.90)
 
-                    // Soft dark under-shadow for natural elevation
+                    // 3. Natural soft dark under-shadow for elevation & contrast against bright backgrounds
                     RoundedRectangle(cornerRadius: cornerRadius)
-                        .fill(Color.black.opacity(0.30))
-                        .blur(radius: 8)
-                        .offset(y: 3)
+                        .fill(Color.black.opacity(0.35))
+                        .blur(radius: 10)
+                        .offset(y: 4)
+                }
+                .onAppear {
+                    // Smooth, continuous rotation around the perimeter (Apple Intelligence style)
+                    withAnimation(.linear(duration: 6.0).repeatForever(autoreverses: false)) {
+                        rotationAngle = 360
+                    }
                 }
 
             case .classicShadow:
                 RoundedRectangle(cornerRadius: cornerRadius)
-                    .fill(Color.black.opacity(isHovering ? 0.45 : 0.30))
-                    .blur(radius: isHovering ? 14 : 9)
-                    .offset(y: 4)
+                    .fill(Color.black.opacity(isHovering ? 0.50 : 0.35))
+                    .blur(radius: isHovering ? 16 : 10)
+                    .offset(y: 5)
 
             case .minimalBorder:
                 RoundedRectangle(cornerRadius: cornerRadius)
-                    .fill(Color.black.opacity(0.15))
-                    .blur(radius: 4)
+                    .fill(Color.black.opacity(0.20))
+                    .blur(radius: 6)
 
             case .none:
                 EmptyView()
