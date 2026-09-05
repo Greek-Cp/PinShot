@@ -109,7 +109,7 @@ final class PinHostingView<Content: View>: NSHostingView<Content> {
 final class PinWindow: NSPanel {
     let pinID = UUID()
     let baseImage: NSImage
-    public static let glowPadding: CGFloat = 36
+    public static let glowPadding: CGFloat = 16
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
