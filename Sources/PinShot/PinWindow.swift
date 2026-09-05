@@ -141,6 +141,42 @@ final class PinWindow: NSPanel {
         self.makeKeyAndOrderFront(nil)
     }
 
+    // MARK: - 2-Finger Pinch-to-Resize Gesture (Trackpad / Magic Mouse)
+    override func magnify(with event: NSEvent) {
+        let magnification = event.magnification
+        let factor = 1.0 + magnification
+        var currentFrame = self.frame
+        let oldSize = currentFrame.size
+        
+        let newWidth = max(min(oldSize.width * factor, 3000), self.minSize.width)
+        let newHeight = newWidth * (oldSize.height / oldSize.width)
+        
+        // Anchor to center point so resizing zooms in/out gracefully around cursor/center
+        let deltaW = newWidth - oldSize.width
+        let deltaH = newHeight - oldSize.height
+        currentFrame.origin.x -= deltaW / 2
+        currentFrame.origin.y -= deltaH / 2
+        currentFrame.size = CGSize(width: newWidth, height: newHeight)
+        
+        self.setFrame(currentFrame, display: true, animate: false)
+    }
+
+    // Smart 2-finger double tap zoom toggle
+    override func smartMagnify(with event: NSEvent) {
+        let imageSize = baseImage.size
+        let baseW = imageSize.width + (Self.glowPadding * 2)
+        let baseH = imageSize.height + (Self.glowPadding * 2)
+        
+        var currentFrame = self.frame
+        let deltaW = baseW - currentFrame.width
+        let deltaH = baseH - currentFrame.height
+        currentFrame.origin.x -= deltaW / 2
+        currentFrame.origin.y -= deltaH / 2
+        currentFrame.size = CGSize(width: baseW, height: baseH)
+        
+        self.setFrame(currentFrame, display: true, animate: true)
+    }
+
     override func mouseDown(with event: NSEvent) {
         self.orderFrontRegardless()
         super.mouseDown(with: event)
@@ -210,19 +246,19 @@ struct PinContentView: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            // Image Content with matched Background Glow Aura
+            // Surrounding Apple Intelligence Glow / Aura (Shows on highlight/hover)
+            PinAuraGlowView(
+                cornerRadius: 12,
+                style: settingsManager.settings.pinShadowStyle,
+                isHovering: isHovering
+            )
+
+            // Pure Image Content (100% borderless, smooth rounded corners)
             Image(nsImage: image)
                 .resizable()
                 .scaledToFit()
                 .opacity(opacity)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .background(
-                    PinAuraGlowView(
-                        cornerRadius: 10,
-                        style: settingsManager.settings.pinShadowStyle,
-                        isHovering: isHovering
-                    )
-                )
+                .clipShape(RoundedRectangle(cornerRadius: 12))
                 // Double tap / double click to close pin automatically
                 .onTapGesture(count: 2) {
                     onClose()
@@ -266,11 +302,11 @@ struct PinContentView: View {
                     .buttonStyle(.plain)
                     .help("Close Pin (⌘W / Esc / Double Click)")
                 }
-                .padding(8)
+                .padding(10)
                 .transition(.opacity.combined(with: .scale(scale: 0.95)))
             }
         }
-        .padding(PinWindow.glowPadding) // Sufficient margin so the glow gradient fades to 0.0 naturally
+        .padding(16) // Ample padding for outer glow radiance
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.18)) {
                 self.isHovering = hovering

@@ -30,48 +30,53 @@ public struct PinAuraGlowView: View {
             switch style {
             case .appleIntelligence:
                 ZStack {
-                    // 1. Soft outer ambient chromatic bloom (stays safely within 20pt spread)
-                    RoundedRectangle(cornerRadius: cornerRadius)
-                        .stroke(
-                            AngularGradient(
-                                gradient: Gradient(colors: auraColors),
-                                center: .center,
-                                angle: .degrees(rotationAngle)
-                            ),
-                            lineWidth: isHovering ? 12 : 8
-                        )
-                        .blur(radius: isHovering ? 10 : 7)
-                        .opacity(isHovering ? 0.90 : 0.75)
+                    // 1. Apple Intelligence Chromatic Rainbow Aura (Visible ONLY when Highlighted/Hovered)
+                    ZStack {
+                        // Wide outer ambient chromatic bloom
+                        RoundedRectangle(cornerRadius: cornerRadius)
+                            .stroke(
+                                AngularGradient(
+                                    gradient: Gradient(colors: auraColors),
+                                    center: .center,
+                                    angle: .degrees(rotationAngle)
+                                ),
+                                lineWidth: 14
+                            )
+                            .blur(radius: 10)
+                            .opacity(0.95)
 
-                    // 2. Crisp radiant rim glow around image perimeter
-                    RoundedRectangle(cornerRadius: cornerRadius)
-                        .stroke(
-                            AngularGradient(
-                                gradient: Gradient(colors: auraColors),
-                                center: .center,
-                                angle: .degrees(rotationAngle)
-                            ),
-                            lineWidth: isHovering ? 4 : 2.5
-                        )
-                        .blur(radius: isHovering ? 3 : 1.5)
-                        .opacity(isHovering ? 1.0 : 0.90)
+                        // Closer radiant rim glow around image perimeter
+                        RoundedRectangle(cornerRadius: cornerRadius)
+                            .stroke(
+                                AngularGradient(
+                                    gradient: Gradient(colors: auraColors),
+                                    center: .center,
+                                    angle: .degrees(rotationAngle)
+                                ),
+                                lineWidth: 4.5
+                            )
+                            .blur(radius: 2.5)
+                            .opacity(1.0)
+                    }
+                    .opacity(isHovering ? 1.0 : 0.0) // Sembunyi jika tidak di-highlight!
+                    .animation(.easeInOut(duration: 0.22), value: isHovering)
 
-                    // 3. Natural soft dark under-shadow for contrast
+                    // 2. Base clean minimal elevation shadow (always present for subtle depth)
                     RoundedRectangle(cornerRadius: cornerRadius)
-                        .fill(Color.black.opacity(0.30))
-                        .blur(radius: 6)
+                        .fill(Color.black.opacity(isHovering ? 0.35 : 0.22))
+                        .blur(radius: isHovering ? 8 : 5)
                         .offset(y: 2)
                 }
                 .onAppear {
-                    // Smooth, continuous rotation around the perimeter
-                    withAnimation(.linear(duration: 6.0).repeatForever(autoreverses: false)) {
+                    // Smooth continuous chromatic rotation
+                    withAnimation(.linear(duration: 5.5).repeatForever(autoreverses: false)) {
                         rotationAngle = 360
                     }
                 }
 
             case .classicShadow:
                 RoundedRectangle(cornerRadius: cornerRadius)
-                    .fill(Color.black.opacity(isHovering ? 0.45 : 0.30))
+                    .fill(Color.black.opacity(isHovering ? 0.45 : 0.28))
                     .blur(radius: isHovering ? 10 : 7)
                     .offset(y: 3)
 
