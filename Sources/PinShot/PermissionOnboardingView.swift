@@ -6,8 +6,8 @@ struct PermissionOnboardingView: View {
     var onPermissionGranted: () -> Void
 
     var body: some View {
-        VStack(spacing: 24) {
-            // App Icon / Logo
+        VStack(spacing: 20) {
+            // App Icon / Header
             ZStack {
                 Circle()
                     .fill(
@@ -17,53 +17,54 @@ struct PermissionOnboardingView: View {
                             endPoint: .bottomTrailing
                         )
                     )
-                    .frame(width: 80, height: 80)
-                    .shadow(color: .blue.opacity(0.3), radius: 10, x: 0, y: 5)
+                    .frame(width: 72, height: 72)
+                    .shadow(color: .blue.opacity(0.3), radius: 8, x: 0, y: 4)
 
                 Image(systemName: "camera.viewfinder")
-                    .font(.system(size: 38, weight: .medium))
+                    .font(.system(size: 34, weight: .medium))
                     .foregroundColor(.white)
             }
-            .padding(.top, 12)
+            .padding(.top, 8)
 
             // Header Title
-            VStack(spacing: 8) {
+            VStack(spacing: 6) {
                 Text("Screen Recording Permission")
-                    .font(.system(size: 20, weight: .bold))
+                    .font(.system(size: 19, weight: .bold))
                 
-                Text("PinShot needs Screen Recording permission to capture screenshots across your displays and create floating pinned images.")
-                    .font(.system(size: 13))
+                Text("PinShot membutuhkan izin Screen Recording untuk mengambil screenshot multi-monitor dan membuat pinned image.")
+                    .font(.system(size: 12))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .lineSpacing(2)
-                    .frame(maxWidth: 360)
+                    .frame(maxWidth: 380)
             }
 
             // Steps Guide
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "1.circle.fill")
                         .foregroundColor(.blue)
-                        .font(.system(size: 16))
-                    Text("Click the button below to open System Settings.")
+                        .font(.system(size: 15))
+                    Text("Klik **Request Permission** atau **Open System Settings** di bawah.")
                         .font(.system(size: 12))
                 }
-                HStack(spacing: 12) {
+                HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "2.circle.fill")
                         .foregroundColor(.blue)
-                        .font(.system(size: 16))
-                    Text("Find PinShot and enable Screen Recording access.")
+                        .font(.system(size: 15))
+                    Text("Aktifkan toggle untuk **PinShot** di daftar Screen Recording.")
                         .font(.system(size: 12))
                 }
-                HStack(spacing: 12) {
-                    Image(systemName: "3.circle.fill")
-                        .foregroundColor(.blue)
-                        .font(.system(size: 16))
-                    Text("PinShot will automatically activate once granted.")
-                        .font(.system(size: 12))
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "info.circle.fill")
+                        .foregroundColor(.orange)
+                        .font(.system(size: 15))
+                    Text("Jika PinShot belum muncul di daftar, klik tombol **+** di System Settings dan pilih PinShot.app (klik tombol 'Show in Finder' di bawah).")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
                 }
             }
-            .padding(16)
+            .padding(14)
             .background(Color(NSColor.controlBackgroundColor).opacity(0.6))
             .cornerRadius(10)
             .overlay(
@@ -72,37 +73,65 @@ struct PermissionOnboardingView: View {
             )
 
             // Action Buttons
-            HStack(spacing: 12) {
-                Button(action: {
-                    permissionService.openSystemSettings()
-                }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "gearshape.fill")
-                        Text("Open System Settings")
+            VStack(spacing: 8) {
+                HStack(spacing: 10) {
+                    Button(action: {
+                        permissionService.openSystemSettings()
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "gearshape.fill")
+                            Text("Open System Settings")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 5)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
 
-                Button(action: {
-                    if permissionService.checkPermission() {
-                        onPermissionGranted()
-                    } else {
+                    Button(action: {
                         permissionService.requestPermission()
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "hand.raised.fill")
+                            Text("Request Prompt")
+                        }
+                        .padding(.vertical, 5)
                     }
-                }) {
-                    Text("Check Again")
-                        .padding(.vertical, 6)
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
+
+                HStack(spacing: 12) {
+                    Button(action: {
+                        let appUrl = Bundle.main.bundleURL
+                        NSWorkspace.shared.activateFileViewerSelecting([appUrl])
+                    }) {
+                        Label("Show PinShot.app in Finder", systemImage: "folder")
+                            .font(.system(size: 11))
+                    }
+                    .buttonStyle(.link)
+
+                    Spacer()
+
+                    Button(action: {
+                        if permissionService.checkPermission() {
+                            onPermissionGranted()
+                        } else {
+                            permissionService.requestPermission()
+                        }
+                    }) {
+                        Text("Check Again")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(.blue)
+                }
+                .padding(.horizontal, 4)
             }
-            .frame(maxWidth: 360)
-            .padding(.bottom, 12)
+            .frame(maxWidth: 380)
+            .padding(.bottom, 6)
         }
-        .padding(28)
+        .padding(24)
         .frame(width: 440)
         .onReceive(permissionService.$hasScreenRecordingPermission) { granted in
             if granted {

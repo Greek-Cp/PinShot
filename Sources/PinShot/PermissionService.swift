@@ -21,21 +21,29 @@ final class PermissionService: ObservableObject {
         return granted
     }
 
-    /// Prompts the macOS system permission dialog and registers the app in System Settings (TCC).
+    /// Actively triggers the macOS system dialog & registers PinShot in System Settings (TCC).
     func requestPermission() {
-        // 1. CGRequestScreenCaptureAccess initiates the system prompt
+        // 1. CGRequestScreenCaptureAccess (macOS legacy / standard TCC prompt)
         CGRequestScreenCaptureAccess()
 
-        // 2. Trigger ScreenCaptureKit query to force TCC to register the bundle
+        // 2. Modern ScreenCaptureKit attempt - this forces macOS 14/15/16 to show
+        // "PinShot would like to record this computer's screen" and adds it to the list in Settings.
         Task {
             do {
-                _ = try await SCShareableContent.current
+                let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+                if let display = content.displays.first {
+                    let filter = SCContentFilter(display: display, excludingWindows: [])
+                    let config = SCStreamConfiguration()
+                    config.width = 64
+                    config.height = 64
+                    _ = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+                }
             } catch {
-                // Ignore error; the call itself triggers TCC registration
+                // Throws if permission is denied/not yet granted, but the attempt itself registers the app in TCC.
             }
         }
 
-        // 3. Attempt sample display image to register
+        // 3. Fallback display capture to touch CG display
         _ = CGDisplayCreateImage(CGMainDisplayID())
 
         startPolling()
