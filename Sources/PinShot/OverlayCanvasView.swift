@@ -63,21 +63,9 @@ final class OverlayCanvasView: NSView {
             // Clear cutout
             context.clear(localRect)
 
-            // Apple Intelligence-style subtle glowing aura
-            context.saveGState()
-            context.setShadow(
-                offset: .zero,
-                blur: 8.0,
-                color: CGColor(red: 0.2, green: 0.7, blue: 1.0, alpha: 0.7)
-            )
-            context.setStrokeColor(CGColor(red: 0.35, green: 0.75, blue: 1.0, alpha: 0.9))
-            context.setLineWidth(2.0)
-            context.stroke(localRect)
-            context.restoreGState()
-
-            // Crisp inner border
-            context.setStrokeColor(CGColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 0.95))
-            context.setLineWidth(1.0)
+            // Clean crisp selection border with native accent
+            context.setStrokeColor(CGColor(red: 0.2, green: 0.5, blue: 1.0, alpha: 1.0))
+            context.setLineWidth(1.5)
             context.stroke(localRect)
 
             // Draw 8 resize handles
