@@ -1,6 +1,6 @@
 import Cocoa
 import CoreGraphics
-import ScreenCaptureKit
+@preconcurrency import ScreenCaptureKit
 
 @MainActor
 final class PermissionService: ObservableObject {
