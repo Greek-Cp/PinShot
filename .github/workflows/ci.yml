@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, "feat/**", "fix/**" ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Build & Test (macOS)
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app || sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Swift Build
+        run: swift build -v
+
+      - name: Swift Test
+        run: swift test -v
+
+      - name: Build App Bundle
+        run: |
+          chmod +x scripts/build-app.sh
+          ./scripts/build-app.sh release
