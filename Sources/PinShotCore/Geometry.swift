@@ -93,6 +93,17 @@ public struct SelectionRect: Equatable, Sendable {
         return SelectionRect(origin: rect.origin, size: rect.size).standardizedRect
     }
 
+    /// Moves the selection rectangle by delta X and delta Y.
+    public func translated(deltaX: CGFloat, deltaY: CGFloat) -> SelectionRect {
+        let std = standardized
+        return SelectionRect(
+            x: std.origin.x + deltaX,
+            y: std.origin.y + deltaY,
+            width: std.width,
+            height: std.height
+        )
+    }
+
     private var standardizedRect: SelectionRect {
         let std = standardized
         return SelectionRect(x: std.origin.x, y: std.origin.y, width: std.width, height: std.height)

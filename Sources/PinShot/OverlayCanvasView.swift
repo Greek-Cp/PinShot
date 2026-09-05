@@ -7,15 +7,16 @@ final class OverlayCanvasView: NSView {
     unowned let manager: OverlayWindowManager
 
     private var isDraggingSelection: Bool = false
+    private var isMovingSelection: Bool = false
     private var isResizingSelection: Bool = false
     private var activeResizeHandle: ResizeHandle?
     private var dragStartPoint: CGPoint = .zero
+    private var initialSelectionRect: SelectionRect?
 
     private var isDrawingAnnotation: Bool = false
     private var currentAnnotationItem: AnnotationItem?
 
     private var mouseLocation: CGPoint = .zero
-    private var loupeHostingView: NSHostingView<LoupeView>?
 
     init(frame: CGRect, screen: NSScreen, manager: OverlayWindowManager) {
         self.screen = screen
@@ -49,7 +50,7 @@ final class OverlayCanvasView: NSView {
         context.fill(bounds)
 
         // 2. Clear out selection rectangle
-        if let selection = manager.currentSelection {
+        if let selection = manager.currentSelection, !selection.isEmpty {
             let stdGlobal = selection.standardized
             // Convert global rect to local view rect
             let localRect = CGRect(
@@ -249,15 +250,25 @@ final class OverlayCanvasView: NSView {
             return
         }
 
-        // Check if hitting a resize handle
-        if let selection = manager.currentSelection,
-           let handle = selection.hitHandle(at: globalPt) {
-            isResizingSelection = true
-            activeResizeHandle = handle
-            return
+        // 1. Check if hitting a resize handle of existing selection
+        if let selection = manager.currentSelection, !selection.isEmpty {
+            if let handle = selection.hitHandle(at: globalPt) {
+                isResizingSelection = true
+                activeResizeHandle = handle
+                return
+            }
+
+            // 2. Check if clicking inside the selection area to MOVE / DRAG the selection!
+            if selection.standardized.contains(globalPt) {
+                isMovingSelection = true
+                dragStartPoint = globalPt
+                initialSelectionRect = selection
+                NSCursor.closedHand.set()
+                return
+            }
         }
 
-        // Start new selection drag
+        // 3. Start brand new selection drag
         isDraggingSelection = true
         dragStartPoint = globalPt
         manager.updateSelection(SelectionRect(origin: globalPt, size: .zero))
@@ -281,6 +292,14 @@ final class OverlayCanvasView: NSView {
             return
         }
 
+        if isMovingSelection, let initial = initialSelectionRect {
+            let deltaX = globalPt.x - dragStartPoint.x
+            let deltaY = globalPt.y - dragStartPoint.y
+            let movedRect = initial.translated(deltaX: deltaX, deltaY: deltaY)
+            manager.updateSelection(movedRect)
+            return
+        }
+
         if isDraggingSelection {
             let newRect = SelectionRect.fromDrag(start: dragStartPoint, current: globalPt)
             manager.updateSelection(newRect)
@@ -298,30 +317,64 @@ final class OverlayCanvasView: NSView {
         }
 
         isDraggingSelection = false
+        isMovingSelection = false
         isResizingSelection = false
         activeResizeHandle = nil
+        initialSelectionRect = nil
+
+        updateCursor(at: globalPoint(from: convert(event.locationInWindow, from: nil)))
     }
 
     override func mouseMoved(with event: NSEvent) {
         let localPoint = convert(event.locationInWindow, from: nil)
         mouseLocation = localPoint
+        updateCursor(at: globalPoint(from: localPoint))
+    }
+
+    private func updateCursor(at globalPt: CGPoint) {
+        if let selection = manager.currentSelection, !selection.isEmpty {
+            if let handle = selection.hitHandle(at: globalPt) {
+                switch handle {
+                case .topLeft, .bottomRight:
+                    NSCursor.crosshair.set()
+                case .topRight, .bottomLeft:
+                    NSCursor.crosshair.set()
+                case .left, .right:
+                    NSCursor.resizeLeftRight.set()
+                case .top, .bottom:
+                    NSCursor.resizeUpDown.set()
+                }
+                return
+            } else if selection.standardized.contains(globalPt) && !manager.isAnnotating {
+                NSCursor.openHand.set()
+                return
+            }
+        }
+        NSCursor.crosshair.set()
     }
 
     // MARK: - Keyboard shortcuts
     override func keyDown(with event: NSEvent) {
+        let isCmd = event.modifierFlags.contains(.command)
+        let isShift = event.modifierFlags.contains(.shift)
+
         switch event.keyCode {
         case 53: // Esc
             manager.closeOverlay()
-        case 35: // P (Pin)
+        case 35: // P (Pin) or ⌘P
             manager.toolbarDidSelectPin()
-        case 0:  // A (Annotate)
-            manager.toolbarDidSelectAnnotate()
-        case 8:  // C (Copy)
+        case 0, 14: // A or E (Annotate)
+            if !isCmd {
+                manager.toolbarDidSelectAnnotate()
+            }
+        case 8: // C (Copy) or ⌘C
             manager.toolbarDidSelectCopy()
-        case 1:  // S (Save)
+        case 36: // Enter / Return (Copy & Finish)
+            manager.toolbarDidSelectCopy()
+        case 1: // S (Save) or ⌘S
             manager.toolbarDidSelectSave()
-        case 6 where event.modifierFlags.contains(.command): // ⌘Z (Undo)
-            if event.modifierFlags.contains(.shift) {
+        case 6 where isCmd: // ⌘Z (Undo/Redo)
+            if isShift {
                 manager.toolbarDidRedo()
             } else {
                 manager.toolbarDidUndo()

@@ -11,19 +11,23 @@ final class HotKeyService {
 
     private init() {}
 
-    /// Registers a global hotkey (default: Command + Shift + A).
+    /// Registers or updates the global hotkey according to user settings.
     func registerDefaultHotKey(action: @escaping @MainActor () -> Void) {
         self.action = action
+        reloadHotKey()
+    }
+
+    func reloadHotKey() {
         unregisterHotKey()
+
+        let settings = SettingsManager.shared.settings
+        let keyCode: UInt32 = settings.globalKeyCode
+        let modifiers: UInt32 = settings.globalModifiers
 
         let hotKeyID = EventHotKeyID(
             signature: OSType(0x50534854), // 'PSHT' in 4-byte hex
             id: 1
         )
-
-        // Key code 0 is 'A' on QWERTY keyboards
-        let keyCode: UInt32 = 0
-        let modifiers: UInt32 = UInt32(cmdKey | shiftKey)
 
         var eventType = EventTypeSpec(
             eventClass: OSType(kEventClassKeyboard),

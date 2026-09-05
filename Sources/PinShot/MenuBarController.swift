@@ -48,6 +48,16 @@ final class MenuBarController: NSObject {
 
         menu.addItem(NSMenuItem.separator())
 
+        // Settings / Preferences
+        let settingsItem = NSMenuItem(
+            title: "Preferences...",
+            action: #selector(openSettingsAction),
+            keyEquivalent: ","
+        )
+        settingsItem.keyEquivalentModifierMask = [.command]
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+
         // Permission check
         let permissionItem = NSMenuItem(
             title: "Check Permissions...",
@@ -78,6 +88,10 @@ final class MenuBarController: NSObject {
 
     @objc private func closeAllPinsAction() {
         PinWindowManager.shared.closeAllPins()
+    }
+
+    @objc private func openSettingsAction() {
+        SettingsWindowManager.shared.show()
     }
 
     @objc private func openPermissionsAction() {

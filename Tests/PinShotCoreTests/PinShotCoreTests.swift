@@ -60,6 +60,13 @@ struct GeometryTests {
         #expect(resizedTL.minY == 50)
         #expect(resizedTL.width == 250)
         #expect(resizedTL.height == 250)
+
+        // Translation / Moving selection area
+        let moved = rect.translated(deltaX: 50, deltaY: -20)
+        #expect(moved.minX == 150)
+        #expect(moved.minY == 80)
+        #expect(moved.width == 200)
+        #expect(moved.height == 200)
     }
 
     @Test("Multi-Screen Intersection & Coordinate Mapping")
@@ -271,7 +278,8 @@ struct SettingsTests {
     @Test("Default settings values")
     func testDefaultSettings() {
         let settings = PinShotSettings()
-        #expect(settings.globalShortcut == "Command + Shift + A")
+        #expect(settings.globalShortcutName.contains("⌘⇧A"))
+        #expect(settings.pinShortcutName.contains("P"))
         #expect(settings.imageFormat == .png)
         #expect(settings.toolbarOrientation == .horizontal)
         #expect(settings.playSoundEffects == true)
