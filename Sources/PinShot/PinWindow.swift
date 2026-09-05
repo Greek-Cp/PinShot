@@ -85,14 +85,17 @@ final class PinWindow: NSPanel {
 
         super.init(
             contentRect: initialRect,
-            styleMask: [.borderless, .resizable],
+            styleMask: [.borderless, .resizable, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
 
+        // Ensure window never gets hidden when user switches to other apps
         self.isReleasedWhenClosed = false
+        self.hidesOnDeactivate = false
+        self.isFloatingPanel = true
         self.level = .floating
-        self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         self.isOpaque = false
         self.backgroundColor = .clear
         self.hasShadow = true
@@ -128,8 +131,13 @@ final class PinWindow: NSPanel {
     }
 
     func show() {
+        self.orderFrontRegardless()
         self.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        self.orderFrontRegardless()
+        super.mouseDown(with: event)
     }
 
     override func keyDown(with event: NSEvent) {
