@@ -58,19 +58,47 @@ final class PinWindowManager: ObservableObject {
 
 final class PinHostingView<Content: View>: NSHostingView<Content> {
     weak var pinWindow: PinWindow?
+    private var initialFrameOnPinch: CGRect = .zero
 
     @MainActor required init(rootView: Content) {
         super.init(rootView: rootView)
         self.wantsLayer = true
         self.layer?.masksToBounds = false
+        self.allowedTouchTypes = [.direct, .indirect]
+
+        // Native AppKit 2-finger pinch gesture recognizer
+        let pinchRecognizer = NSMagnificationGestureRecognizer(target: self, action: #selector(handlePinchGesture(_:)))
+        self.addGestureRecognizer(pinchRecognizer)
     }
 
     @MainActor required dynamic init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
+    @objc private func handlePinchGesture(_ recognizer: NSMagnificationGestureRecognizer) {
+        guard let win = pinWindow else { return }
+        switch recognizer.state {
+        case .began:
+            initialFrameOnPinch = win.frame
+        case .changed:
+            let scale = max(0.15, 1.0 + recognizer.magnification)
+            let baseW = initialFrameOnPinch.width * scale
+            let newWidth = max(min(baseW, 3500), win.minSize.width)
+            let newHeight = newWidth * (initialFrameOnPinch.height / initialFrameOnPinch.width)
+
+            let deltaW = newWidth - initialFrameOnPinch.width
+            let deltaH = newHeight - initialFrameOnPinch.height
+            let newX = initialFrameOnPinch.origin.x - (deltaW / 2)
+            let newY = initialFrameOnPinch.origin.y - (deltaH / 2)
+
+            win.setFrame(CGRect(x: newX, y: newY, width: newWidth, height: newHeight), display: true, animate: false)
+        default:
+            break
+        }
+    }
+
     override func magnify(with event: NSEvent) {
-        pinWindow?.handleMagnify(event)
+        pinWindow?.handleMagnifyEvent(event)
     }
 
     override func smartMagnify(with event: NSEvent) {
@@ -151,9 +179,6 @@ final class PinWindow: NSPanel {
             onSave: { [weak self] in
                 guard let self = self else { return }
                 self.saveImage()
-            },
-            onPinchScale: { [weak self] factor in
-                self?.scaleBy(factor)
             }
         )
         let hostingView = PinHostingView(rootView: contentView)
@@ -166,10 +191,22 @@ final class PinWindow: NSPanel {
         self.makeKeyAndOrderFront(nil)
     }
 
-    // MARK: - 2-Finger Pinch-to-Resize Gesture (Trackpad / Magic Mouse)
-    func handleMagnify(_ event: NSEvent) {
-        let magnification = event.magnification
-        scaleBy(1.0 + magnification)
+    // MARK: - 2-Finger Pinch-to-Resize Event Fallback
+    func handleMagnifyEvent(_ event: NSEvent) {
+        let factor = 1.0 + event.magnification
+        var currentFrame = self.frame
+        let oldSize = currentFrame.size
+        
+        let newWidth = max(min(oldSize.width * factor, 3500), self.minSize.width)
+        let newHeight = newWidth * (oldSize.height / oldSize.width)
+        
+        let deltaW = newWidth - oldSize.width
+        let deltaH = newHeight - oldSize.height
+        currentFrame.origin.x -= deltaW / 2
+        currentFrame.origin.y -= deltaH / 2
+        currentFrame.size = CGSize(width: newWidth, height: newHeight)
+        
+        self.setFrame(currentFrame, display: true, animate: false)
     }
 
     func handleSmartMagnify(_ event: NSEvent) {
@@ -185,23 +222,6 @@ final class PinWindow: NSPanel {
         currentFrame.size = CGSize(width: baseW, height: baseH)
         
         self.setFrame(currentFrame, display: true, animate: true)
-    }
-
-    func scaleBy(_ factor: CGFloat) {
-        guard factor > 0.05 && factor < 20.0 else { return }
-        var currentFrame = self.frame
-        let oldSize = currentFrame.size
-        
-        let newWidth = max(min(oldSize.width * factor, 3500), self.minSize.width)
-        let newHeight = newWidth * (oldSize.height / oldSize.width)
-        
-        let deltaW = newWidth - oldSize.width
-        let deltaH = newHeight - oldSize.height
-        currentFrame.origin.x -= deltaW / 2
-        currentFrame.origin.y -= deltaH / 2
-        currentFrame.size = CGSize(width: newWidth, height: newHeight)
-        
-        self.setFrame(currentFrame, display: true, animate: false)
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -266,7 +286,6 @@ struct PinContentView: View {
     let onClose: () -> Void
     let onCopy: () -> Void
     let onSave: () -> Void
-    var onPinchScale: ((CGFloat) -> Void)? = nil
 
     @ObservedObject private var settingsManager = SettingsManager.shared
     @State private var isHovering: Bool = false
@@ -340,12 +359,6 @@ struct PinContentView: View {
                 self.isHovering = hovering
             }
         }
-        .gesture(
-            MagnifyGesture()
-                .onChanged { value in
-                    onPinchScale?(value.magnification)
-                }
-        )
         .contextMenu {
             Button("Copy Image (⌘C)", action: onCopy)
             Button("Save Image As... (⌘S)", action: onSave)
