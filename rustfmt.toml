@@ -1,3 +1,0 @@
-# Formatting is enforced by `cargo fmt`, not by review (Constitution VI).
-edition = "2021"
-max_width = 100
