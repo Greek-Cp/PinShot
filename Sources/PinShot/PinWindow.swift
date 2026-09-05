@@ -200,19 +200,25 @@ struct PinContentView: View {
 
     @State private var isHovering: Bool = false
     @State private var opacity: Double = 1.0
+    @State private var spawnGlow: Bool = true
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
+            // Ambient Apple Intelligence Chromatic Shader Glow
+            AppleIntelligenceGlowBorder(
+                cornerRadius: 12,
+                lineWidth: spawnGlow ? 3.5 : 2.0,
+                isHovered: isHovering || spawnGlow
+            )
+            .padding(1)
+
             // Image Content
             Image(nsImage: image)
                 .resizable()
                 .scaledToFit()
                 .opacity(opacity)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(isHovering ? Color.blue.opacity(0.6) : Color.white.opacity(0.2), lineWidth: 1.5)
-                )
+                .clipShape(RoundedRectangle(cornerRadius: 11))
+                .padding(2)
                 // Double tap / double click to close pin automatically
                 .onTapGesture(count: 2) {
                     onClose()
@@ -258,6 +264,14 @@ struct PinContentView: View {
                 }
                 .padding(8)
                 .transition(.opacity.combined(with: .scale(scale: 0.95)))
+            }
+        }
+        .padding(8)
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                withAnimation(.easeOut(duration: 0.8)) {
+                    spawnGlow = false
+                }
             }
         }
         .onHover { hovering in
