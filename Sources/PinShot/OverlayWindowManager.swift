@@ -2,6 +2,12 @@ import Cocoa
 import SwiftUI
 import PinShotCore
 
+final class OverlayWindowPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+    override var acceptsFirstResponder: Bool { true }
+}
+
 @MainActor
 final class OverlayWindowManager: NSObject, FloatingToolbarDelegate {
     static let shared = OverlayWindowManager()
@@ -9,6 +15,7 @@ final class OverlayWindowManager: NSObject, FloatingToolbarDelegate {
     private var overlayWindows: [NSWindow] = []
     private var toolbarPanel: FloatingToolbarPanel?
     private var capturedFrames: [CapturedScreenFrame] = []
+    private var localKeyMonitor: Any?
     
     var currentSelection: SelectionRect?
     var annotationDoc = AnnotationDocument()
@@ -44,10 +51,86 @@ final class OverlayWindowManager: NSObject, FloatingToolbarDelegate {
             window.makeKeyAndOrderFront(nil)
         }
 
+        // 3. Setup event monitor for guaranteed instant keyboard shortcut handling
+        setupKeyMonitor()
+
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    private func setupKeyMonitor() {
+        removeKeyMonitor()
+        localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self = self, !self.overlayWindows.isEmpty else { return event }
+            if self.handleKeyEvent(event) {
+                return nil // Event consumed
+            }
+            return event
+        }
+    }
+
+    private func removeKeyMonitor() {
+        if let monitor = localKeyMonitor {
+            NSEvent.removeMonitor(monitor)
+            localKeyMonitor = nil
+        }
+    }
+
+    func handleKeyEvent(_ event: NSEvent) -> Bool {
+        let isCmd = event.modifierFlags.contains(.command)
+        let isShift = event.modifierFlags.contains(.shift)
+
+        switch event.keyCode {
+        case 53: // Esc: Cancel selection and close overlay
+            closeOverlay()
+            return true
+
+        case 35: // P (Pin) or ⌘P
+            if let sel = currentSelection, !sel.isEmpty {
+                toolbarDidSelectPin()
+                return true
+            }
+
+        case 8: // C (Copy) or ⌘C
+            if let sel = currentSelection, !sel.isEmpty {
+                toolbarDidSelectCopy()
+                return true
+            }
+
+        case 36: // Enter / Return (Copy & Finish)
+            if let sel = currentSelection, !sel.isEmpty {
+                toolbarDidSelectCopy()
+                return true
+            }
+
+        case 1: // S (Save) or ⌘S
+            if let sel = currentSelection, !sel.isEmpty {
+                toolbarDidSelectSave()
+                return true
+            }
+
+        case 0, 14: // A or E (Annotate)
+            if !isCmd && currentSelection != nil && !currentSelection!.isEmpty {
+                toolbarDidSelectAnnotate()
+                return true
+            }
+
+        case 6 where isCmd: // ⌘Z (Undo) or ⌘⇧Z (Redo)
+            if isShift {
+                toolbarDidRedo()
+            } else {
+                toolbarDidUndo()
+            }
+            return true
+
+        default:
+            break
+        }
+
+        return false
+    }
+
     func closeOverlay() {
+        removeKeyMonitor()
         for window in overlayWindows {
             window.orderOut(nil)
         }
@@ -59,9 +142,9 @@ final class OverlayWindowManager: NSObject, FloatingToolbarDelegate {
     }
 
     private func createOverlayWindow(for screen: NSScreen) -> NSWindow {
-        let panel = NSPanel(
+        let panel = OverlayWindowPanel(
             contentRect: screen.frame,
-            styleMask: [.borderless, .nonactivatingPanel],
+            styleMask: [.borderless],
             backing: .buffered,
             defer: false
         )

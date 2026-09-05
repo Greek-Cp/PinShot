@@ -355,32 +355,16 @@ final class OverlayCanvasView: NSView {
 
     // MARK: - Keyboard shortcuts
     override func keyDown(with event: NSEvent) {
-        let isCmd = event.modifierFlags.contains(.command)
-        let isShift = event.modifierFlags.contains(.shift)
-
-        switch event.keyCode {
-        case 53: // Esc
-            manager.closeOverlay()
-        case 35: // P (Pin) or ⌘P
-            manager.toolbarDidSelectPin()
-        case 0, 14: // A or E (Annotate)
-            if !isCmd {
-                manager.toolbarDidSelectAnnotate()
-            }
-        case 8: // C (Copy) or ⌘C
-            manager.toolbarDidSelectCopy()
-        case 36: // Enter / Return (Copy & Finish)
-            manager.toolbarDidSelectCopy()
-        case 1: // S (Save) or ⌘S
-            manager.toolbarDidSelectSave()
-        case 6 where isCmd: // ⌘Z (Undo/Redo)
-            if isShift {
-                manager.toolbarDidRedo()
-            } else {
-                manager.toolbarDidUndo()
-            }
-        default:
-            super.keyDown(with: event)
+        if manager.handleKeyEvent(event) {
+            return
         }
+        super.keyDown(with: event)
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if manager.handleKeyEvent(event) {
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
     }
 }

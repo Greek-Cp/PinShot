@@ -7,6 +7,34 @@ final class PinWindowManager: ObservableObject {
     static let shared = PinWindowManager()
 
     @Published private(set) var activePins: [PinWindow] = []
+    private var pinKeyMonitor: Any?
+
+    private init() {
+        setupKeyMonitor()
+    }
+
+    private func setupKeyMonitor() {
+        pinKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self = self, !self.activePins.isEmpty else { return event }
+            
+            // Check if key event is intended for a focused PinWindow
+            if let keyWindow = NSApp.keyWindow as? PinWindow {
+                let isCmd = event.modifierFlags.contains(.command)
+                // ⌘W (key 13) or Esc (key 53)
+                if (isCmd && event.keyCode == 13) || event.keyCode == 53 {
+                    self.closePin(keyWindow)
+                    return nil
+                }
+                // ⌘C (key 8)
+                if isCmd && event.keyCode == 8 {
+                    PasteboardService.shared.copyImage(keyWindow.baseImage)
+                    SoundService.shared.playCaptureSound()
+                    return nil
+                }
+            }
+            return event
+        }
+    }
 
     func createPin(image: NSImage, at origin: CGPoint? = nil) {
         let pin = PinWindow(image: image, initialOrigin: origin)
@@ -32,6 +60,10 @@ final class PinWindow: NSPanel {
     let pinID = UUID()
     let baseImage: NSImage
 
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+    override var acceptsFirstResponder: Bool { true }
+
     init(image: NSImage, initialOrigin: CGPoint? = nil) {
         self.baseImage = image
         let imageSize = image.size
@@ -53,7 +85,7 @@ final class PinWindow: NSPanel {
 
         super.init(
             contentRect: initialRect,
-            styleMask: [.borderless, .resizable, .nonactivatingPanel],
+            styleMask: [.borderless, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -97,9 +129,46 @@ final class PinWindow: NSPanel {
 
     func show() {
         self.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
-    private func saveImage() {
+    override func keyDown(with event: NSEvent) {
+        let isCmd = event.modifierFlags.contains(.command)
+        if (isCmd && event.keyCode == 13) || event.keyCode == 53 { // ⌘W or Esc
+            PinWindowManager.shared.closePin(self)
+            return
+        }
+        if isCmd && event.keyCode == 8 { // ⌘C
+            PasteboardService.shared.copyImage(self.baseImage)
+            SoundService.shared.playCaptureSound()
+            return
+        }
+        if isCmd && event.keyCode == 1 { // ⌘S
+            self.saveImage()
+            return
+        }
+        super.keyDown(with: event)
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let isCmd = event.modifierFlags.contains(.command)
+        if isCmd && event.keyCode == 13 { // ⌘W
+            PinWindowManager.shared.closePin(self)
+            return true
+        }
+        if isCmd && event.keyCode == 8 { // ⌘C
+            PasteboardService.shared.copyImage(self.baseImage)
+            SoundService.shared.playCaptureSound()
+            return true
+        }
+        if isCmd && event.keyCode == 1 { // ⌘S
+            self.saveImage()
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
+    func saveImage() {
         let savePanel = NSSavePanel()
         savePanel.allowedContentTypes = [.png]
         savePanel.nameFieldStringValue = "PinShot_\(Int(Date().timeIntervalSince1970)).png"
@@ -136,6 +205,10 @@ struct PinContentView: View {
                     RoundedRectangle(cornerRadius: 10)
                         .stroke(isHovering ? Color.blue.opacity(0.6) : Color.white.opacity(0.2), lineWidth: 1.5)
                 )
+                // Double tap / double click to close pin automatically
+                .onTapGesture(count: 2) {
+                    onClose()
+                }
 
             // Hover Action Overlay
             if isHovering {
@@ -173,7 +246,7 @@ struct PinContentView: View {
                             .clipShape(Circle())
                     }
                     .buttonStyle(.plain)
-                    .help("Close Pin (Esc)")
+                    .help("Close Pin (⌘W / Esc / Double Click)")
                 }
                 .padding(8)
                 .transition(.opacity.combined(with: .scale(scale: 0.95)))
@@ -195,7 +268,7 @@ struct PinContentView: View {
                 Button("25%") { opacity = 0.25 }
             }
             Divider()
-            Button("Close Pin", action: onClose)
+            Button("Close Pin (⌘W / Esc)", action: onClose)
         }
     }
 }
